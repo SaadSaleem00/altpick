@@ -57,6 +57,10 @@ fn powershell(name: &str) -> String {
 }
 
 /// CMD: wrap in double quotes. Windows file names can't contain `"`.
+///
+/// Known limit: CMD still expands `%NAME%` inside double quotes at the
+/// prompt, and there is no escape for that there, so a name like
+/// `%PATH%.txt` can't be passed safely. A lone `%` is fine.
 fn cmd(name: &str) -> String {
     if needs_quotes(name) {
         format!("\"{name}\"")

@@ -11,8 +11,9 @@ PS C:\projects\api> node ▌        ← press Alt+F
 PS C:\projects\api> node server.js▌
 ```
 
-Works in Windows Terminal, the VS Code terminal and the classic PowerShell
-window (Windows PowerShell 5.1 and PowerShell 7).
+Works in Windows Terminal, the VS Code terminal and the classic console
+window, in PowerShell (5.1 and 7), CMD (with [Clink](https://chrisant996.github.io/clink/))
+and Git Bash.
 
 ## Keys
 
@@ -35,6 +36,32 @@ cargo build --release
 ```
 
 Then type `node ` and press **Alt+F**.
+
+CMD, with Clink installed:
+
+```bat
+set FILEPICK_EXE=%CD%\target\release\filepick.exe
+clink inject --scripts %CD%\shell
+```
+
+Git Bash:
+
+```bash
+export FILEPICK_EXE="$PWD/target/release/filepick.exe"
+source shell/filepick.bash
+```
+
+Plain CMD without Clink has no way to add hotkeys.
+
+## Tests
+
+```powershell
+cargo test
+cd tests\e2e; npm install; node run.js
+```
+
+The end-to-end tests drive each installed shell in a hidden console and
+press the keys for real. See the top of `tests/e2e/run.js`.
 
 ## Command-line options
 

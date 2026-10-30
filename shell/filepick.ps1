@@ -33,6 +33,20 @@ if (-not (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue)) {
     return
 }
 
+# No -Chord given: use the hotkey from the settings file, if there is one.
+if (-not $PSBoundParameters.ContainsKey('Chord')) {
+    try {
+        $configDir = if ($env:FILEPICK_CONFIG_DIR) { $env:FILEPICK_CONFIG_DIR } else { Join-Path $env:APPDATA 'filepick' }
+        $config = Join-Path $configDir 'config.toml'
+        if (Test-Path -LiteralPath $config -PathType Leaf) {
+            foreach ($line in [System.IO.File]::ReadAllLines($config)) {
+                if ($line -match '^\s*hotkey\s*=\s*["'']([^"'']+)["'']') { $Chord = $Matches[1] }
+            }
+        }
+    }
+    catch { }
+}
+
 if (-not $Exe) {
     $nextToScript = Join-Path $PSScriptRoot 'filepick.exe'
     if (Test-Path -LiteralPath $nextToScript -PathType Leaf) {
