@@ -1,0 +1,7 @@
+# Bake the C runtime into filepick.exe so it runs on any Windows PC
+# without "VCRUNTIME140.dll was not found" errors.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

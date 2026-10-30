@@ -1,0 +1,15 @@
+[package]
+name = "filepick"
+version = "0.1.0"
+edition = "2021"
+description = "Hotkey file palette for Windows terminals: pick a file with the arrow keys and drop its name at your cursor."
+
+[dependencies]
+crossterm = "0.29"
+unicode-width = "0.2"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+strip = true
