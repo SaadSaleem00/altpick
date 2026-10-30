@@ -7,9 +7,12 @@
 //!
 //! Exit codes: 0 = picked, 1 = cancelled, 2 = error.
 
+mod config;
 mod filter;
 mod list;
+mod profile;
 mod quote;
+mod setup;
 mod term;
 mod ui;
 
@@ -23,6 +26,7 @@ filepick - pick a file from the current folder with the arrow keys
 
 USAGE:
     filepick [OPTIONS]
+    filepick setup | remove | doctor    Turn the hotkey on / off / check it (see filepick setup --help)
 
 OPTIONS:
     --dir <PATH>        Folder to list (default: current folder)
@@ -64,8 +68,27 @@ fn parse_args() -> Result<Parsed, String> {
     let mut out = None;
     let mut quote = QuoteStyle::None;
     let mut opts = list::Options::default();
+    let mut ext_given = false;
 
-    let mut it = std::env::args_os().skip(1);
+    let mut it = std::env::args_os().skip(1).peekable();
+    match it.peek().and_then(|a| a.to_str()) {
+        Some(cmd @ ("setup" | "remove" | "doctor")) => {
+            let cmd = cmd.to_string();
+            it.next();
+            return setup::main(&cmd, it).map(Parsed::Exit);
+        }
+        // For the CMD and Git Bash hooks: the hotkey from the settings file
+        // in readline notation, e.g. \ef for Alt+F.
+        Some("key") => {
+            let hotkey = config::load().hotkey.unwrap_or_else(|| config::DEFAULT_HOTKEY.to_string());
+            let key = config::readline_key(&hotkey)
+                .or_else(|| config::readline_key(config::DEFAULT_HOTKEY))
+                .unwrap_or_default();
+            println!("{key}");
+            return Ok(Parsed::Exit(ExitCode::SUCCESS));
+        }
+        _ => {}
+    }
     while let Some(arg) = it.next() {
         let arg = arg.into_string().map_err(|_| "arguments must be valid text".to_string())?;
         // Accept both "--opt value" and "--opt=value".
@@ -88,6 +111,7 @@ fn parse_args() -> Result<Parsed, String> {
                     .ok_or_else(|| format!("unknown --quote style '{v}' (use none, ps, cmd or sh)"))?;
             }
             "--ext" => {
+                ext_given = true;
                 let v = value("--ext")?.to_string_lossy().to_string();
                 opts.extensions = v
                     .split(',')
@@ -109,6 +133,9 @@ fn parse_args() -> Result<Parsed, String> {
         }
     }
 
+    if !ext_given {
+        opts.extensions = config::load().extensions;
+    }
     let dir = match dir {
         Some(d) => d,
         None => std::env::current_dir().map_err(|e| format!("can't read the current folder: {e}"))?,

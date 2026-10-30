@@ -53,21 +53,47 @@ source shell/filepick.bash
 
 Plain CMD without Clink has no way to add hotkeys.
 
+## Turn it on for good
+
+With `filepick.exe` and the three scripts in one folder (as the installer
+puts them):
+
+```
+filepick setup       adds one line to your PowerShell profiles and ~/.bashrc,
+                     and registers the Clink script; running it twice is harmless
+filepick setup --allow-scripts
+                     also lets PowerShell load the hotkey script, if your
+                     execution policy blocks it (sets yours to RemoteSigned)
+filepick remove      undoes exactly what setup did
+filepick doctor      checks everything and says how to fix what's wrong
+```
+
+## Settings
+
+`%APPDATA%\filepick\config.toml`:
+
+```toml
+hotkey = "Alt+f"            # also e.g. "Ctrl+g", "F2"; avoid Ctrl+Alt (that's AltGr)
+extensions = ["js", "ts"]   # only show these file types (default: everything)
+```
+
 ## Tests
 
 ```powershell
 cargo test
-cd tests\e2e; npm install; node run.js
+cd tests\e2e; npm install; npm test
 ```
 
-The end-to-end tests drive each installed shell in a hidden console and
-press the keys for real. See the top of `tests/e2e/run.js`.
+`setup.js` checks `setup` / `remove` on throwaway files. `run.js` drives each
+installed shell in a hidden console and presses the keys for real (about 15
+minutes). See the top of each file.
 
 ## Command-line options
 
 ```
 filepick [--dir PATH] [--out FILE] [--quote none|ps|cmd|sh]
          [--ext js,ts] [--no-dirs] [--all]
+filepick setup | remove | doctor
 ```
 
 Exit codes: `0` picked, `1` cancelled, `2` error.

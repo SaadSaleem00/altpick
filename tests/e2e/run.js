@@ -318,14 +318,17 @@ function casesFor(kind) {
       }),
     );
   }
-  // The hook's error path: the palette can't start.
-  cases.push(
-    unchangedCase('a palette that fails to start leaves the line alone', kind.echo('safe'), 'safe', {
-      ...kind.badExe,
-      palette: false,
-      errorsOk: true,
-    }),
-  );
+  // The hook's error path: the palette can't start. (Not for installed
+  // layouts, where the exe next to the script is always found.)
+  if (kind.badExe) {
+    cases.push(
+      unchangedCase('a palette that fails to start leaves the line alone', kind.echo('safe'), 'safe', {
+        ...kind.badExe,
+        palette: false,
+        errorsOk: true,
+      }),
+    );
+  }
   return cases;
 }
 
@@ -412,7 +415,7 @@ async function suite(s) {
       } else {
         failed++;
         console.log(`   FAIL  ${c.title}\n         ${problems.join('\n         ')}`);
-        if (s.kind === POWERSHELL) {
+        if (s.kind.errorsCheck) {
           try {
             const errs = await dumpPowerShellErrors(sh, dir);
             if (errs.trim()) console.log(`--- $error ---\n${errs}`);
@@ -556,11 +559,38 @@ function bashSuite(bash, label) {
   };
 }
 
+/**
+ * A throwaway copy of the installed layout (exe and scripts in one folder),
+ * set up with `filepick setup` into a fake profile and .bashrc. Shells that
+ * load only those files show the hotkey works the way an install does: no
+ * -Exe and no FILEPICK_EXE, just the line setup wrote.
+ */
+function makeInstall() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-install-'));
+  const dir = path.join(root, 'Programs', 'filepick');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.copyFileSync(EXE, path.join(dir, 'filepick.exe'));
+  for (const f of ['filepick.ps1', 'filepick.lua', 'filepick.bash']) fs.copyFileSync(path.join(SHELL_DIR, f), path.join(dir, f));
+  const profile = path.join(root, 'profile.ps1');
+  const bashrc = path.join(root, '.bashrc');
+  // The user's own line. It sets the test prompt, because Git's
+  // /etc/bash.bashrc runs first and sets its own.
+  fs.writeFileSync(bashrc, "PS1='BASH$ '\n");
+  const env = { FILEPICK_CONFIG_DIR: path.join(root, 'config') };
+  execFileSync(path.join(dir, 'filepick.exe'), ['setup', '--profile', profile, '--bashrc', bashrc, '--no-clink'], {
+    env: { ...process.env, ...env },
+    stdio: 'ignore',
+  });
+  return { profile, bashrc, env, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) };
+}
+
 async function main() {
   if (!fs.existsSync(EXE)) {
     console.error(`Build first: cargo build --release (missing ${EXE})`);
     process.exit(2);
   }
+  const install = makeInstall();
+  process.on('exit', install.cleanup);
 
   const suites = [{ label: 'Windows PowerShell 5.1', kind: POWERSHELL, file: 'powershell.exe', args: plainArgs() }];
   const vscode = findVsCodeShellIntegration();
@@ -606,6 +636,24 @@ async function main() {
 
   if (bash) suites.push(bashSuite(bash, 'Git Bash'));
   else console.log('(Git Bash not found: skipping it)');
+
+  // As installed by `filepick setup` (see makeInstall).
+  suites.push({
+    label: 'Windows PowerShell 5.1 after filepick setup',
+    kind: { ...POWERSHELL, load: () => `. ${psQuote(install.profile)}`, badExe: null },
+    file: 'powershell.exe',
+    args: plainArgs(),
+    env: install.env,
+  });
+  if (bash) {
+    suites.push({
+      label: 'Git Bash after filepick setup',
+      kind: { ...BASH, load: null, badExe: null },
+      file: bash,
+      args: ['--noprofile', '--rcfile', install.bashrc.replace(/\\/g, '/'), '-i'],
+      env: { ...install.env, HISTFILE: '/dev/null', PS1: 'BASH$ ', CHERE_INVOKING: '1' },
+    });
+  }
 
   const only = (process.env.FILEPICK_SUITE || '').toLowerCase();
   const key = (label) => label.toLowerCase().replace(/ /g, '');
