@@ -13,6 +13,7 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 const pty = require('@lydell/node-pty');
 const { Terminal } = require('@xterm/headless');
+const pses = require('./pses');
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const EXE = path.join(ROOT, 'target', 'release', 'filepick.exe');
@@ -93,7 +94,7 @@ class Shell {
   /** Line the cursor is on. */
   cursorLine() {
     const b = this.term.buffer.active;
-    return b.getLine(b.baseY + b.cursorY)?.translateToString(true) ?? '';
+    return (b.getLine(b.baseY + b.cursorY)?.translateToString(true) ?? '').trimEnd();
   }
 
   async type(s) {
@@ -123,10 +124,19 @@ class Shell {
     await this.waitFor('a prompt', () => /^PS .*> ?$/.test(this.cursorLine()));
   }
 
-  kill() {
+  /** Ends the shell and waits until node-pty has let go of it. */
+  async kill() {
+    // End the whole tree, including anything the shell started.
+    try {
+      execFileSync('taskkill.exe', ['/PID', String(this.proc.pid), '/T', '/F'], { stdio: 'ignore' });
+    } catch {}
     try {
       this.proc.kill();
     } catch {}
+    // Exiting node while node-pty is still closing the console can hang node.
+    const until = Date.now() + 5000;
+    while (!this.exited && Date.now() < until) await sleep(100);
+    await sleep(500);
   }
 }
 
@@ -161,29 +171,40 @@ const HANDLER_CRASH = /exception occurred in custom key handler/i;
 /**
  * One test case. `drive` works the palette after Alt+F. `expect` is the exact
  * line the command must print.
+ *
+ * `palette: false` is for cases where Alt+F must do nothing visible.
+ * `setup` / `teardown` are PowerShell commands run around the case.
+ * `errorsOk` skips the errors=0 check (for cases that cause an error on purpose).
  */
-function pickCase(name, { cwd, prefix = 'Write-Output ', drive, expect, insertedCheck }) {
-  return { name, cwd, prefix, drive, expect, insertedCheck };
+function pickCase(name, { cwd, prefix = 'Write-Output ', drive, expect, insertedCheck, ...more }) {
+  return { name, cwd, prefix, drive, expect, insertedCheck, palette: true, ...more };
 }
 
 async function runCase(sh, c, dir) {
   const cwd = c.cwd ?? dir;
   const start = `=== case ${Math.random().toString(36).slice(2)} ===`;
-  await sh.run(`Set-Location -LiteralPath ${psQuote(cwd)}; $error.Clear(); Clear-Host; '${start}'`);
+  const setup = c.setup ? `${c.setup}; ` : '';
+  await sh.run(`Set-Location -LiteralPath ${psQuote(cwd)}; ${setup}$error.Clear(); Clear-Host; '${start}'`);
 
   await sh.type(c.prefix);
   await sh.key(ALT_F, 0);
-  await sh.waitFor('the palette', (t) => t.includes(' filepick ') && t.includes('Esc cancel'));
-  await c.drive(sh);
+  if (c.palette) {
+    await sh.waitFor('the palette', (t) => t.includes(' filepick ') && t.includes('Esc cancel'));
+    await c.drive(sh);
+    await sh.waitFor('the palette to close', (t) => !t.includes('Esc cancel'));
+  } else {
+    // Give the handler time to run (and to fail, if it's going to).
+    await sleep(1500);
+  }
 
   // Back on the prompt with the line updated.
-  await sh.waitFor('the palette to close', (t) => !t.includes('Esc cancel'));
   await sh.waitFor('the line to be updated', () => c.insertedCheck(sh.cursorLine()));
   await sleep(200);
 
   await sh.key(ENTER, 0);
   await sh.waitForPrompt();
   await sh.run(`"errors=" + $error.Count`);
+  if (c.teardown) await sh.run(c.teardown);
 
   const all = sh.lines();
   const out = all.slice(all.lastIndexOf(start));
@@ -192,17 +213,19 @@ async function runCase(sh, c, dir) {
     const near = out.filter((l) => l.includes(c.expect)).map((l) => JSON.stringify(l));
     problems.push(`expected an output line "${c.expect}"; similar lines: ${near.join(', ')}`);
   }
-  if (!out.some((l) => l === 'errors=0')) problems.push('expected errors=0');
+  if (!c.errorsOk && !out.some((l) => l === 'errors=0')) problems.push('expected errors=0');
   if (out.some((l) => HANDLER_CRASH.test(l))) problems.push('PSReadLine reported a key handler exception');
   return problems;
 }
 
-async function suite(label, file, args, extraEnv, ptyOptions) {
+async function suite(label, file, args, extraEnv, ptyOptions, start) {
   console.log(`\n== ${label} ==`);
   const dir = makeTestFolder();
   const sh = new Shell(file, args, extraEnv, ptyOptions);
   let failed = 0;
+  let cleanup = () => {};
   try {
+    if (start) cleanup = await start(sh);
     await sh.waitForPrompt();
     await sh.run(`$PSVersionTable.PSVersion.ToString() + ' / PSReadLine ' + (Get-Module PSReadLine).Version`);
     const ver = sh.lines().find((l) => /PSReadLine \d/.test(l) && !l.startsWith('PS '));
@@ -267,6 +290,24 @@ async function suite(label, file, args, extraEnv, ptyOptions) {
         insertedCheck: (l) => l.endsWith('Write-Output Windows'),
         expect: 'Windows',
       }),
+      pickCase('does nothing outside the file system (HKCU:\\)', {
+        cwd: 'HKCU:\\',
+        prefix: 'Write-Output reg',
+        palette: false,
+        insertedCheck: (l) => l.endsWith('Write-Output reg'),
+        expect: 'reg',
+      }),
+      // The hook's error path: the palette can't start. This goes through a
+      // `catch` block, which must not crash the extension terminal either.
+      pickCase('a palette that fails to start leaves the line alone', {
+        prefix: 'Write-Output safe',
+        setup: `$saved = $global:FilePickExe; $global:FilePickExe = 'C:\\no\\such\\filepick.exe'`,
+        teardown: '$global:FilePickExe = $saved',
+        palette: false,
+        errorsOk: true,
+        insertedCheck: (l) => l.endsWith('Write-Output safe'),
+        expect: 'safe',
+      }),
     ];
 
     for (const c of cases) {
@@ -292,8 +333,13 @@ async function suite(label, file, args, extraEnv, ptyOptions) {
       }
     }
   } finally {
-    sh.kill();
-    fs.rmSync(dir, { recursive: true, force: true });
+    await sh.kill();
+    try {
+      cleanup();
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch {
+      // A file can stay locked for a moment after the shell exits; it's in %TEMP% anyway.
+    }
   }
   return failed;
 }
@@ -325,17 +371,21 @@ function findVsCodeShellIntegration() {
   return null;
 }
 
+// FILEPICK_PROFILE=1 loads the user's own PowerShell profile too, like a real
+// terminal does. Off by default so the tests don't depend on this machine.
+const PROFILE_ARGS = process.env.FILEPICK_PROFILE === '1' ? [] : ['-NoProfile'];
+
 // Keeps the test commands out of the user's real PSReadLine history.
 const NO_HISTORY = 'Set-PSReadLineOption -HistorySaveStyle SaveNothing';
 
 /** Starts the shell plainly (no profile), with history off. */
 function plainArgs() {
-  return ['-NoLogo', '-NoProfile', '-NoExit', '-Command', NO_HISTORY];
+  return ['-NoLogo', ...PROFILE_ARGS, '-NoExit', '-Command', NO_HISTORY];
 }
 
 /** Starts the shell the way the VS Code terminal does, with history off. */
 function vsCodeArgs(script) {
-  return ['-NoLogo', '-NoProfile', '-NoExit', '-Command', `${NO_HISTORY}; try { . ${psQuote(script)} } catch {}`];
+  return ['-NoLogo', ...PROFILE_ARGS, '-NoExit', '-Command', `${NO_HISTORY}; try { . ${psQuote(script)} } catch {}`];
 }
 
 const VSCODE_ENV = { TERM_PROGRAM: 'vscode', VSCODE_NONCE: 'e2e-nonce', VSCODE_STABLE: '1' };
@@ -376,12 +426,37 @@ async function main() {
     }
   } else console.log('(pwsh not installed: skipping PowerShell 7)');
 
+  // The VS Code PowerShell extension's own terminal (a different host).
+  const ext = pses.findExtension();
+  if (ext) {
+    const l = pses.launch(ext);
+    suites.push([
+      'Windows PowerShell 5.1 in the PowerShell extension terminal',
+      'powershell.exe',
+      l.args,
+      l.env,
+      { useConptyDll: true },
+      async (sh) => {
+        const sock = await pses.connect(l.sessionFile);
+        // The extension runs its own startup command, so history is turned off
+        // as the first typed line. PSReadLine 2.2+ never writes lines that
+        // mention "token" to the history file, so this line stays out too.
+        await sh.waitForPrompt();
+        await sh.run(`${NO_HISTORY} <# token #>`);
+        return () => {
+          sock.destroy();
+          fs.rmSync(l.work, { recursive: true, force: true });
+        };
+      },
+    ]);
+  } else console.log('(VS Code PowerShell extension not found: skipping its terminal)');
+
   // FILEPICK_SUITE=vscode runs only the suites whose name contains "vscode".
   const only = (process.env.FILEPICK_SUITE || '').toLowerCase();
   let failed = 0;
-  for (const [label, file, args, env, ptyOptions] of suites) {
+  for (const [label, file, args, env, ptyOptions, start] of suites) {
     if (only && !label.toLowerCase().replace(/ /g, '').includes(only)) continue;
-    failed += await suite(label, file, args, env, ptyOptions);
+    failed += await suite(label, file, args, env, ptyOptions, start);
   }
 
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');

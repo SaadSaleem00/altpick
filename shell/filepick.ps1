@@ -56,48 +56,52 @@ Set-PSReadLineKeyHandler -Chord $Chord `
     -ScriptBlock {
         param($key, $arg)
 
-        # Plain .NET calls on purpose: in Windows PowerShell 5.1 (PSReadLine
-        # 2.0) starting filepick.exe with the & operator from a key handler
-        # crashed with a NullReferenceException. System.Diagnostics.Process
-        # avoids PowerShell's native-command machinery entirely and leaves
-        # the user's $LASTEXITCODE untouched.
+        # No `finally` and no `return` inside `try` here. In the VS Code
+        # PowerShell extension's terminal on Windows PowerShell 5.1, entering
+        # a `finally` block from a key handler throws a NullReferenceException
+        # inside PowerShell itself (ExceptionHandlingOps.SuspendStoppingPipeline),
+        # which no try/catch can stop. `catch` blocks are safe there.
+        #
+        # Plain .NET calls on purpose: System.Diagnostics.Process avoids
+        # PowerShell's native-command machinery and leaves the user's
+        # $LASTEXITCODE untouched.
         $tmp = $null
+        $pick = $null
         try {
             # Only real folders can be listed (not HKLM:\, Env:\ ...).
             $location = $ExecutionContext.SessionState.Path.CurrentLocation
-            if ($location.Provider.Name -ne 'FileSystem') { return }
+            if ($location.Provider.Name -eq 'FileSystem') {
+                # The pick comes back through a temp file (UTF-8), so names in
+                # any language survive. The palette draws on the console directly.
+                $tmp = [System.IO.Path]::GetTempFileName()
 
-            # The pick comes back through a temp file (UTF-8), so names in any
-            # language survive. The palette draws on the console directly.
-            $tmp = [System.IO.Path]::GetTempFileName()
+                $start = New-Object System.Diagnostics.ProcessStartInfo
+                $start.FileName = $global:FilePickExe
+                # The folder is passed as the working directory rather than an
+                # argument, so paths like C:\ need no quoting tricks.
+                $start.WorkingDirectory = $location.ProviderPath
+                $start.Arguments = '--out "' + $tmp + '" --quote ps'
+                $start.UseShellExecute = $false
 
-            $start = New-Object System.Diagnostics.ProcessStartInfo
-            $start.FileName = $global:FilePickExe
-            # The folder is passed as the working directory rather than an
-            # argument, so paths like C:\ need no quoting tricks.
-            $start.WorkingDirectory = $location.ProviderPath
-            $start.Arguments = '--out "' + $tmp + '" --quote ps'
-            $start.UseShellExecute = $false
+                $process = [System.Diagnostics.Process]::Start($start)
+                $process.WaitForExit()
+                $exitCode = $process.ExitCode
+                $process.Dispose()
 
-            $process = [System.Diagnostics.Process]::Start($start)
-            $process.WaitForExit()
-            $exitCode = $process.ExitCode
-            $process.Dispose()
-
-            if ($exitCode -eq 0) {
-                $pick = [System.IO.File]::ReadAllText($tmp, [System.Text.Encoding]::UTF8)
-                if ($pick) {
-                    [Microsoft.PowerShell.PSConsoleReadLine]::Insert($pick)
+                if ($exitCode -eq 0) {
+                    $pick = [System.IO.File]::ReadAllText($tmp, [System.Text.Encoding]::UTF8)
                 }
             }
         }
         catch {
             # Never break the user's command line because of the palette.
         }
-        finally {
-            if ($tmp) {
-                try { [System.IO.File]::Delete($tmp) } catch { }
-            }
+
+        if ($tmp) {
+            try { [System.IO.File]::Delete($tmp) } catch { }
+        }
+        if ($pick) {
+            try { [Microsoft.PowerShell.PSConsoleReadLine]::Insert($pick) } catch { }
         }
     }
 
