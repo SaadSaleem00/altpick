@@ -1,0 +1,14 @@
+{
+  "name": "filepick-e2e",
+  "version": "1.0.0",
+  "description": "End-to-end tests: drives PowerShell in a hidden console and presses Alt+F",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "type": "commonjs",
+  "devDependencies": {
+    "@lydell/node-pty": "^1.2.0-beta.18",
+    "@xterm/headless": "^6.0.0"
+  },
+  "private": true
+}
