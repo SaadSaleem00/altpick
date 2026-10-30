@@ -428,11 +428,11 @@ async function main() {
 
   // The VS Code PowerShell extension's own terminal (a different host).
   const ext = pses.findExtension();
-  if (ext) {
+  const extensionSuite = (label, exe) => {
     const l = pses.launch(ext);
-    suites.push([
-      'Windows PowerShell 5.1 in the PowerShell extension terminal',
-      'powershell.exe',
+    return [
+      label,
+      exe,
       l.args,
       l.env,
       { useConptyDll: true },
@@ -448,15 +448,27 @@ async function main() {
           fs.rmSync(l.work, { recursive: true, force: true });
         };
       },
-    ]);
+    ];
+  };
+  if (ext) {
+    suites.push(extensionSuite('Windows PowerShell 5.1 in the PowerShell extension terminal', 'powershell.exe'));
+    // With pwsh installed, the extension uses it by default.
+    if (pwsh) suites.push(extensionSuite('PowerShell 7 in the PowerShell extension terminal', pwsh));
   } else console.log('(VS Code PowerShell extension not found: skipping its terminal)');
 
   // FILEPICK_SUITE=vscode runs only the suites whose name contains "vscode".
   const only = (process.env.FILEPICK_SUITE || '').toLowerCase();
   let failed = 0;
+  let ran = 0;
   for (const [label, file, args, env, ptyOptions, start] of suites) {
     if (only && !label.toLowerCase().replace(/ /g, '').includes(only)) continue;
+    ran++;
     failed += await suite(label, file, args, env, ptyOptions, start);
+  }
+  if (ran === 0) {
+    const names = suites.map(([label]) => `  ${label.toLowerCase().replace(/ /g, '')}`).join('\n');
+    console.error(`FILEPICK_SUITE=${only} matches no suite. Suites:\n${names}`);
+    process.exit(2);
   }
 
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
