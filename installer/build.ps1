@@ -1,5 +1,5 @@
 # Builds Setup.exe:  powershell -ExecutionPolicy Bypass -File installer\build.ps1
-# Output: target\installer\filepick-<version>-Setup.exe
+# Output: target\installer\altpick-<version>-Setup.exe
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 
@@ -16,8 +16,8 @@ Push-Location $root
 try {
     cargo build --release
     if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
-    & $iscc "/DAppVersion=$version" "/DSourceDir=$root" (Join-Path $PSScriptRoot 'filepick.iss')
+    & $iscc "/DAppVersion=$version" "/DSourceDir=$root" (Join-Path $PSScriptRoot 'altpick.iss')
     if ($LASTEXITCODE -ne 0) { throw 'Inno Setup failed' }
 }
 finally { Pop-Location }
-Get-Item (Join-Path $root "target\installer\filepick-$version-Setup.exe")
+Get-Item (Join-Path $root "target\installer\altpick-$version-Setup.exe")

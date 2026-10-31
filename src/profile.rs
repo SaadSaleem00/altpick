@@ -1,12 +1,16 @@
-//! Adding and removing filepick's one marked line in a shell startup file
+//! Adding and removing altpick's one marked line in a shell startup file
 //! (PowerShell profile, .bashrc), without disturbing anything else in it.
 //!
 //! The file's encoding and line endings are kept exactly. Windows PowerShell
 //! 5.1 reads a profile without a byte-order mark in the old ANSI code page, so
 //! files that aren't valid UTF-8 are edited byte for byte.
 
-/// Every line filepick adds ends with this, so it can be found again.
-pub const MARKER: &str = "# filepick-setup";
+/// Every line altpick adds ends with this, so it can be found again.
+pub const MARKER: &str = "# altpick-setup";
+
+/// The marker from when AltPick was called filepick. Such lines are taken
+/// out by both `add_line` and `remove_lines`.
+pub const OLD_MARKER: &str = "# filepick-setup";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Encoding {
@@ -40,7 +44,7 @@ fn decode(bytes: &[u8]) -> Result<Text, String> {
         return Ok(Text { text, encoding: Encoding::Utf16Le });
     }
     if bytes.starts_with(&[0xFE, 0xFF]) {
-        return Err("the file is UTF-16 big-endian, which filepick doesn't edit".into());
+        return Err("the file is UTF-16 big-endian, which altpick doesn't edit".into());
     }
     match String::from_utf8(bytes.to_vec()) {
         Ok(text) => Ok(Text { text, encoding: Encoding::Utf8 }),
@@ -114,6 +118,10 @@ pub fn add_line(
     let mut changed = false;
     for piece in text.split_inclusive('\n') {
         let (content, ending) = split_ending(piece);
+        if content.contains(OLD_MARKER) {
+            changed = true;
+            continue;
+        }
         if content.contains(MARKER) {
             if found {
                 changed = true; // a duplicate: drop it
@@ -146,7 +154,8 @@ pub fn remove_lines(bytes: &[u8]) -> Result<Option<Vec<u8>>, String> {
     let mut out = String::with_capacity(text.len());
     let mut removed = false;
     for piece in text.split_inclusive('\n') {
-        if split_ending(piece).0.contains(MARKER) {
+        let content = split_ending(piece).0;
+        if content.contains(MARKER) || content.contains(OLD_MARKER) {
             removed = true;
         } else {
             out.push_str(piece);
@@ -179,7 +188,7 @@ fn split_ending(piece: &str) -> (&str, &str) {
 mod tests {
     use super::*;
 
-    const LINE: &str = "if (Test-Path x) { . x }  # filepick-setup";
+    const LINE: &str = "if (Test-Path x) { . x }  # altpick-setup";
 
     fn add(existing: &[u8]) -> Option<Vec<u8>> {
         add_line(Some(existing), LINE, "\r\n", true).unwrap()
@@ -206,7 +215,7 @@ mod tests {
 
     #[test]
     fn replaces_an_older_line_in_place_and_drops_duplicates() {
-        let old = "a\r\nold  # filepick-setup\r\nb\r\nagain # filepick-setup\r\n";
+        let old = "a\r\nold  # altpick-setup\r\nb\r\nagain # altpick-setup\r\n";
         let out = add(old.as_bytes()).unwrap();
         assert_eq!(out, format!("a\r\n{LINE}\r\nb\r\n").as_bytes());
     }
@@ -244,7 +253,7 @@ mod tests {
 
     #[test]
     fn non_english_line_needs_a_safe_encoding() {
-        let line = "if (Test-Path 'C:\\Users\\ساره\\f.ps1') { }  # filepick-setup";
+        let line = "if (Test-Path 'C:\\Users\\ساره\\f.ps1') { }  # altpick-setup";
         // Plain ASCII file: gains a BOM, otherwise unchanged.
         let out = add_line(Some(b"a\r\n"), line, "\r\n", true).unwrap().unwrap();
         assert_eq!(out, [&[0xEF, 0xBB, 0xBF][..], format!("a\r\n{line}\r\n").as_bytes()].concat());
@@ -252,6 +261,13 @@ mod tests {
         assert!(add_line(Some(b"caf\xe9\r\n"), line, "\r\n", true).is_err());
         // .bashrc (UTF-8 without a mark is normal there): fine.
         assert!(add_line(Some("é\n".as_bytes()), line, "\n", false).is_ok());
+    }
+
+    #[test]
+    fn old_filepick_lines_are_taken_out() {
+        let old = "a\r\nif (x) { . x }  # filepick-setup\r\n";
+        assert_eq!(add(old.as_bytes()).unwrap(), format!("a\r\n{LINE}\r\n").as_bytes());
+        assert_eq!(remove_lines(old.as_bytes()).unwrap().unwrap(), b"a\r\n");
     }
 
     #[test]

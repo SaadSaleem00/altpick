@@ -28,7 +28,7 @@ function psQuote(s) {
 
 /** Arguments for powershell.exe, the same as the extension uses. */
 function launch(extDir) {
-  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-pses-'));
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick-pses-'));
   const sessionFile = path.join(work, 'session.json');
   const modules = path.join(extDir, 'modules');
   const command =

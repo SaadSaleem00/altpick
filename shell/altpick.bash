@@ -1,16 +1,16 @@
-# filepick hotkey for Git Bash.
+# altpick hotkey for Git Bash.
 #
-# While typing a command, press Alt+F. The filepick palette opens with the
+# While typing a command, press Alt+F. The altpick palette opens with the
 # files in the current folder. Pick one with the arrow keys and press Enter:
 # its name is typed at your cursor. Esc cancels.
 #
 # Turn it on in this window (or add the line to ~/.bashrc):
 #
-#   source /c/path/to/filepick/shell/filepick.bash
+#   source /c/path/to/altpick/shell/altpick.bash
 #
-# filepick.exe is looked for in this order: $FILEPICK_EXE, next to this
-# script, then on PATH. The key comes from the filepick settings file
-# (hotkey = "Alt+f" in %APPDATA%\filepick\config.toml). FILEPICK_KEY, set
+# altpick.exe is looked for in this order: $ALTPICK_EXE, next to this
+# script, then on PATH. The key comes from the altpick settings file
+# (hotkey = "Alt+f" in %APPDATA%\altpick\config.toml). ALTPICK_KEY, set
 # before sourcing, overrides it, in readline's notation: '\eOQ' for F2.
 
 # Only interactive shells with readline have key bindings.
@@ -19,26 +19,26 @@ case $- in
 *) return 0 2>/dev/null || exit 0 ;;
 esac
 
-__filepick_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
+__altpick_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)
 
-__filepick_exe() {
-    if [ -n "$FILEPICK_EXE" ] && [ -f "$FILEPICK_EXE" ]; then
-        printf '%s' "$FILEPICK_EXE"
-    elif [ -n "$__filepick_dir" ] && [ -f "$__filepick_dir/filepick.exe" ]; then
-        printf '%s' "$__filepick_dir/filepick.exe"
+__altpick_exe() {
+    if [ -n "$ALTPICK_EXE" ] && [ -f "$ALTPICK_EXE" ]; then
+        printf '%s' "$ALTPICK_EXE"
+    elif [ -n "$__altpick_dir" ] && [ -f "$__altpick_dir/altpick.exe" ]; then
+        printf '%s' "$__altpick_dir/altpick.exe"
     else
-        printf '%s' filepick.exe
+        printf '%s' altpick.exe
     fi
 }
 
 # Runs the palette in the current folder and inserts the pick at the cursor.
 # On any error it leaves the command line alone.
-__filepick_pick() {
+__altpick_pick() {
     local tmp pick exe
     # The pick comes back through a temp file (UTF-8), so names in any
     # language survive. The palette draws on the console directly.
     tmp=$(mktemp 2>/dev/null) || return 0
-    exe=$(__filepick_exe)
+    exe=$(__altpick_exe)
 
     # In mintty (Git Bash's own window) the terminal is a /dev/pty, not a
     # Windows console. Windows programs then run behind a hidden console that
@@ -51,7 +51,7 @@ __filepick_pick() {
     esac
     [ -n "$own_screen" ] && printf '\e[?1049h' >/dev/tty
 
-    # filepick.exe is a Windows program, so it gets a Windows path for --out.
+    # altpick.exe is a Windows program, so it gets a Windows path for --out.
     if "$exe" --out "$(cygpath -w "$tmp")" --quote sh 2>/dev/null; then
         pick=$(cat "$tmp" 2>/dev/null)
     fi
@@ -66,13 +66,13 @@ __filepick_pick() {
     return 0
 }
 
-__filepick_key=$FILEPICK_KEY
-if [ -z "$__filepick_key" ]; then
-    __filepick_key=$("$(__filepick_exe)" key 2>/dev/null | tr -d '\r')
+__altpick_key=$ALTPICK_KEY
+if [ -z "$__altpick_key" ]; then
+    __altpick_key=$("$(__altpick_exe)" key 2>/dev/null | tr -d '\r')
 fi
-case $__filepick_key in
+case $__altpick_key in
 '\'?*) ;;
-*) __filepick_key='\ef' ;;
+*) __altpick_key='\ef' ;;
 esac
-bind -x "\"$__filepick_key\": __filepick_pick"
-unset __filepick_key
+bind -x "\"$__altpick_key\": __altpick_pick"
+unset __altpick_key

@@ -176,7 +176,7 @@ mod tests {
 
     #[test]
     fn reads_a_real_folder() {
-        let dir = std::env::temp_dir().join(format!("filepick-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("altpick-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(dir.join("sub")).unwrap();
         for f in ["b.js", "a.js", "notes.md", "my file.js"] {

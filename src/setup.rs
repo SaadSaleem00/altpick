@@ -1,13 +1,13 @@
-//! `filepick setup`, `filepick remove` and `filepick doctor`.
+//! `altpick setup`, `altpick remove` and `altpick doctor`.
 //!
 //! setup: adds one marked line to the PowerShell profile of each installed
 //! PowerShell (and to ~/.bashrc for Git Bash), registers the Clink script, and
 //! with --allow-scripts lets PowerShell run the hook. Running it again changes
-//! nothing. It writes down what it did in `%APPDATA%\filepick\setup-state.txt`
+//! nothing. It writes down what it did in `%APPDATA%\altpick\setup-state.txt`
 //! so `remove` can undo exactly that.
 //!
-//! The hook scripts (filepick-hook.ps1, .lua, .bash) are expected next to
-//! filepick.exe, as the installer puts them; --hooks DIR points elsewhere.
+//! The hook scripts (altpick-hook.ps1, .lua, .bash) are expected next to
+//! altpick.exe, as the installer puts them; --hooks DIR points elsewhere.
 
 use std::collections::BTreeMap;
 use std::ffi::OsString;
@@ -20,17 +20,17 @@ const SHELLS: [(&str, &str); 2] = [("Windows PowerShell", "powershell.exe"), ("P
 const STATE_FILE: &str = "setup-state.txt";
 
 pub const HELP: &str = "\
-filepick setup / remove / doctor
+altpick setup / remove / doctor
 
 USAGE:
-    filepick setup [OPTIONS]     Turn the hotkey on in PowerShell, CMD (Clink) and Git Bash
-    filepick remove [OPTIONS]    Undo everything setup did
-    filepick doctor              Check the setup and explain any problem
+    altpick setup [OPTIONS]     Turn the hotkey on in PowerShell, CMD (Clink) and Git Bash
+    altpick remove [OPTIONS]    Undo everything setup did
+    altpick doctor              Check the setup and explain any problem
 
 OPTIONS:
     --allow-scripts     Let PowerShell load the hotkey script: sets the
                         CurrentUser execution policy to RemoteSigned if needed
-    --hooks <DIR>       Folder with filepick-hook.ps1/.lua/.bash (default: next to filepick.exe)
+    --hooks <DIR>       Folder with altpick-hook.ps1/.lua/.bash (default: next to altpick.exe)
     --profile <FILE>    Use this PowerShell profile instead of the real ones (repeatable; for testing)
     --bashrc <FILE>     Use this file instead of ~/.bashrc
     --no-clink          Leave Clink alone
@@ -67,7 +67,7 @@ pub fn main(command: &str, args: impl Iterator<Item = OsString>) -> Result<ExitC
                 print!("{HELP}");
                 return Ok(ExitCode::SUCCESS);
             }
-            other => return Err(format!("unknown option '{other}' (try filepick {command} --help)")),
+            other => return Err(format!("unknown option '{other}' (try altpick {command} --help)")),
         }
     }
     match command {
@@ -83,10 +83,11 @@ pub fn main(command: &str, args: impl Iterator<Item = OsString>) -> Result<ExitC
 
 fn setup(opts: &Options) -> Result<ExitCode, String> {
     let hooks = hooks_dir(opts)?;
-    let ps_hook = hooks.join("filepick-hook.ps1");
+    let ps_hook = hooks.join("altpick-hook.ps1");
     if !ps_hook.is_file() {
         return Err(format!("can't find {} (use --hooks to say where the scripts are)", ps_hook.display()));
     }
+    forget_filepick(opts);
     let mut state = State::load();
     let line = ps_profile_line(&ps_hook);
     let mut warnings = 0;
@@ -116,7 +117,7 @@ fn setup(opts: &Options) -> Result<ExitCode, String> {
     // CMD through Clink.
     if !opts.no_clink {
         match find_clink() {
-            Some(clink) if hooks.join("filepick.lua").is_file() => {
+            Some(clink) if hooks.join("altpick.lua").is_file() => {
                 if clink_has_scripts(&clink, &hooks) || clink_install_scripts(&clink, &hooks) {
                     state.add("clink", &hooks.to_string_lossy());
                     println!("CMD: Clink will load the hotkey from {}", hooks.display());
@@ -131,17 +132,17 @@ fn setup(opts: &Options) -> Result<ExitCode, String> {
                     println!("CMD: Clink didn't accept the script folder {}", hooks.display());
                 }
             }
-            Some(_) => println!("CMD: filepick.lua is missing from {}; skipped", hooks.display()),
+            Some(_) => println!("CMD: altpick.lua is missing from {}; skipped", hooks.display()),
             None => println!(
                 "CMD: Clink isn't installed, so CMD gets no hotkey (CMD can't have hotkeys without it). \
-                 Get it from https://chrisant996.github.io/clink/ and run filepick setup again."
+                 Get it from https://chrisant996.github.io/clink/ and run altpick setup again."
             ),
         }
     }
 
     // Git Bash.
     if let Some(bashrc) = bashrc_target(opts) {
-        let bash_hook = hooks.join("filepick.bash");
+        let bash_hook = hooks.join("altpick.bash");
         if bash_hook.is_file() {
             match add_to_file(&bashrc, &bash_rc_line(&bash_hook), "\n", false) {
                 Ok(change) => record(&mut state, "bashrc", &bashrc, &change, "Git Bash"),
@@ -157,7 +158,7 @@ fn setup(opts: &Options) -> Result<ExitCode, String> {
     if warnings == 0 {
         println!("\nDone. Open a new terminal and press {} while typing a command.", hotkey());
     } else {
-        println!("\nSetup finished, but see the notes above. `filepick doctor` explains more.");
+        println!("\nSetup finished, but see the notes above. `altpick doctor` explains more.");
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -186,7 +187,7 @@ fn check_policy(
     if !allow {
         println!(
             "{name}: the execution policy is {}, so PowerShell won't load the hotkey. To allow it, run \
-             `filepick setup --allow-scripts` (sets your own policy to RemoteSigned, the usual setting).",
+             `altpick setup --allow-scripts` (sets your own policy to RemoteSigned, the usual setting).",
             policy.effective
         );
         return false;
@@ -204,7 +205,7 @@ fn check_policy(
         println!("{name}: set your execution policy to RemoteSigned so the hotkey can load.");
         true
     } else {
-        println!("{name}: couldn't change the execution policy. `filepick doctor` explains more.");
+        println!("{name}: couldn't change the execution policy. `altpick doctor` explains more.");
         false
     }
 }
@@ -214,6 +215,7 @@ fn check_policy(
 // ---------------------------------------------------------------------------
 
 fn remove(opts: &Options) -> Result<ExitCode, String> {
+    forget_filepick(opts);
     let state = State::load();
     let mut problems = 0;
 
@@ -271,10 +273,37 @@ fn remove(opts: &Options) -> Result<ExitCode, String> {
 
     if problems == 0 {
         State::delete();
-        println!("filepick is removed from your shells.");
+        println!("altpick is removed from your shells.");
         Ok(ExitCode::SUCCESS)
     } else {
         Ok(ExitCode::from(2))
+    }
+}
+
+/// Cleans up after the old name, filepick. Its profile lines go through
+/// `profile::OLD_MARKER`; this handles the rest: its Clink script folder and
+/// its settings folder (config.toml moves over if there's none yet).
+fn forget_filepick(opts: &Options) {
+    if !opts.no_clink {
+        if let (Some(clink), Some(base)) = (find_clink(), std::env::var_os("LOCALAPPDATA")) {
+            let old = PathBuf::from(base).join("Programs").join("filepick");
+            if clink_has_scripts(&clink, &old) && clink_uninstall_scripts(&clink, &old) {
+                println!("CMD: Clink no longer loads the old filepick script from {}", old.display());
+            }
+        }
+    }
+    let Some(old) = config::old_dir().filter(|d| d.is_dir()) else { return };
+    if let Some(new) = config::path().filter(|p| !p.exists()) {
+        let old_config = old.join("config.toml");
+        if old_config.is_file() {
+            if let Some(dir) = new.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::copy(&old_config, &new);
+        }
+    }
+    if std::fs::remove_dir_all(&old).is_ok() {
+        println!("Removed the old filepick settings folder {}", old.display());
     }
 }
 
@@ -290,23 +319,23 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
         println!("  !!   {text}\n       Fix: {fix}");
     };
 
-    println!("filepick {}", env!("CARGO_PKG_VERSION"));
+    println!("altpick {}", env!("CARGO_PKG_VERSION"));
     let exe = std::env::current_exe().ok();
     let exe_dir = exe.as_deref().and_then(Path::parent).map(Path::to_path_buf);
     match &exe_dir {
         Some(dir) if on_path(dir) => ok(format!("{} is on PATH", dir.display())),
         Some(dir) => bad(
-            format!("{} isn't on PATH, so `filepick` can't be run by name", dir.display()),
-            "reinstall filepick, or open a new terminal if you just installed it".into(),
+            format!("{} isn't on PATH, so `altpick` can't be run by name", dir.display()),
+            "reinstall altpick, or open a new terminal if you just installed it".into(),
         ),
         None => {}
     }
 
     let hooks = hooks_dir(opts).ok();
-    let ps_hook = hooks.as_ref().map(|h| h.join("filepick-hook.ps1"));
+    let ps_hook = hooks.as_ref().map(|h| h.join("altpick-hook.ps1"));
     match &ps_hook {
         Some(h) if h.is_file() => ok(format!("hook scripts are in {}", h.parent().unwrap_or(h).display())),
-        _ => bad("the hook scripts aren't next to filepick.exe".into(), "reinstall filepick".into()),
+        _ => bad("the hook scripts aren't next to altpick.exe".into(), "reinstall altpick".into()),
     }
 
     let mut any_powershell = false;
@@ -319,7 +348,7 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
         } else {
             bad(
                 format!("{name}: the hotkey line isn't in {}", target.profile.display()),
-                "run `filepick setup`".into(),
+                "run `altpick setup`".into(),
             );
         }
         let Some(info) = &target.info else { continue };
@@ -334,7 +363,7 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
         } else {
             bad(
                 format!("{name}: execution policy {} blocks the hotkey script", policy.effective),
-                "run `filepick setup --allow-scripts`".into(),
+                "run `altpick setup --allow-scripts`".into(),
             );
         }
         match info.get("psreadline").filter(|v| !v.is_empty()) {
@@ -356,7 +385,7 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
                 if clink_has_scripts(&clink, h) {
                     ok("CMD: Clink loads the hotkey script".into());
                 } else {
-                    bad("CMD: Clink doesn't load the hotkey script".into(), "run `filepick setup`".into());
+                    bad("CMD: Clink doesn't load the hotkey script".into(), "run `altpick setup`".into());
                 }
                 if clink_autorun(&clink) {
                     ok("CMD: Clink starts with every CMD window".into());
@@ -380,7 +409,7 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
         } else {
             bad(
                 format!("Git Bash: the hotkey line isn't in {}", bashrc.display()),
-                "run `filepick setup`".into(),
+                "run `altpick setup`".into(),
             );
         }
     }
@@ -416,8 +445,8 @@ fn hooks_dir(opts: &Options) -> Result<PathBuf, String> {
     if let Some(h) = &opts.hooks {
         return std::path::absolute(h).map_err(|e| format!("bad --hooks folder: {e}"));
     }
-    let exe = std::env::current_exe().map_err(|e| format!("can't find filepick.exe itself: {e}"))?;
-    exe.parent().map(Path::to_path_buf).ok_or_else(|| "can't find filepick.exe's folder".into())
+    let exe = std::env::current_exe().map_err(|e| format!("can't find altpick.exe itself: {e}"))?;
+    exe.parent().map(Path::to_path_buf).ok_or_else(|| "can't find altpick.exe's folder".into())
 }
 
 struct PowerShellTarget {
@@ -537,15 +566,15 @@ impl Policy {
     }
 }
 
-/// The line for the PowerShell profile. It does nothing if filepick was
-/// deleted without `filepick remove`, so it can never break the profile.
+/// The line for the PowerShell profile. It does nothing if altpick was
+/// deleted without `altpick remove`, so it can never break the profile.
 fn ps_profile_line(hook: &Path) -> String {
     let p = ps_path(hook);
     format!("if (Test-Path -LiteralPath {p}) {{ . {p} -Quiet }}  {}", profile::MARKER)
 }
 
 /// A PowerShell string for `path`. Under %LOCALAPPDATA% (where the installer
-/// puts filepick) it's written as "$env:LOCALAPPDATA\..." so the line is
+/// puts altpick) it's written as "$env:LOCALAPPDATA\..." so the line is
 /// plain ASCII even when the user name isn't, which keeps the profile's
 /// encoding out of the picture.
 fn ps_path(path: &Path) -> String {
@@ -654,7 +683,7 @@ fn record(state: &mut State, key: &str, file: &Path, change: &Change, name: &str
     println!("{name}: {what} {}", file.display());
 }
 
-/// Takes filepick's line out. A file setup created is deleted again once
+/// Takes altpick's line out. A file setup created is deleted again once
 /// nothing else is in it.
 fn remove_from_file(file: &Path, created_by_setup: bool) -> Result<bool, String> {
     let bytes = match std::fs::read(file) {
@@ -790,7 +819,7 @@ impl State {
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("can't create {}: {e}", dir.display()))?;
         }
-        let mut text = String::from("# Written by `filepick setup` so `filepick remove` can undo it.\n");
+        let mut text = String::from("# Written by `altpick setup` so `altpick remove` can undo it.\n");
         for (k, v) in &self.entries {
             text.push_str(&format!("{k}={v}\n"));
         }
@@ -826,10 +855,10 @@ mod tests {
 
     #[test]
     fn profile_line_outside_localappdata_is_single_quoted() {
-        let line = ps_profile_line(Path::new(r"D:\it's\filepick-hook.ps1"));
+        let line = ps_profile_line(Path::new(r"D:\it's\altpick-hook.ps1"));
         assert_eq!(
             line,
-            r"if (Test-Path -LiteralPath 'D:\it''s\filepick-hook.ps1') { . 'D:\it''s\filepick-hook.ps1' -Quiet }  # filepick-setup"
+            r"if (Test-Path -LiteralPath 'D:\it''s\altpick-hook.ps1') { . 'D:\it''s\altpick-hook.ps1' -Quiet }  # altpick-setup"
         );
     }
 

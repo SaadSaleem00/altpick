@@ -1,5 +1,5 @@
 {
-  "name": "filepick-e2e",
+  "name": "altpick-e2e",
   "version": "1.0.0",
   "description": "End-to-end tests: drives PowerShell in a hidden console and presses Alt+F",
   "scripts": {

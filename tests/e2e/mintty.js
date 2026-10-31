@@ -4,12 +4,12 @@
 //
 // mintty is a terminal, not a Windows console. Windows programs started from
 // it run behind a hidden console that keeps the palette's alternate-screen
-// switch to itself and blanks mintty's real screen. filepick.bash works
+// switch to itself and blanks mintty's real screen. altpick.bash works
 // around that; this test checks the fix through mintty's own output log:
 // mintty must be switched to its alternate screen around the palette, and
 // the picked name must be typed afterwards.
 //
-//   FILEPICK_HOOK_BASH=<file>   test another bash hook (e.g. an old version)
+//   ALTPICK_HOOK_BASH=<file>   test another bash hook (e.g. an old version)
 
 const fs = require('fs');
 const os = require('os');
@@ -17,8 +17,8 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const EXE = path.join(ROOT, 'target', 'release', 'filepick.exe');
-const HOOK = process.env.FILEPICK_HOOK_BASH || path.join(ROOT, 'shell', 'filepick.bash');
+const EXE = path.join(ROOT, 'target', 'release', 'altpick.exe');
+const HOOK = process.env.ALTPICK_HOOK_BASH || path.join(ROOT, 'shell', 'altpick.bash');
 const GIT = path.join(process.env.ProgramFiles || 'C:\\Program Files', 'Git');
 const MINTTY = path.join(GIT, 'usr', 'bin', 'mintty.exe');
 
@@ -52,7 +52,7 @@ async function main() {
   }
   console.log('\n== Git Bash in mintty (real window) ==');
 
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-mintty-'));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick-mintty-'));
   const files = path.join(tmp, 'files');
   fs.mkdirSync(files);
   fs.writeFileSync(path.join(files, 'alpha.js'), 'x');
@@ -66,7 +66,7 @@ async function main() {
       'HISTFILE=/dev/null',
       `cd '${fwd(files)}'`,
       'echo OLD-OUTPUT-LINE',
-      `export FILEPICK_EXE='${fwd(EXE)}' FILEPICK_TEST_KEYS=alp,enter`,
+      `export ALTPICK_EXE='${fwd(EXE)}' ALTPICK_TEST_KEYS=alp,enter`,
       `. '${fwd(HOOK)}'`,
       '',
     ].join('\n'),
@@ -88,7 +88,7 @@ async function main() {
 
     const out = fs.existsSync(log) ? fs.readFileSync(log, 'utf8') : '';
     const enter = out.indexOf('\x1b[?1049h');
-    const palette = out.indexOf(' filepick ');
+    const palette = out.indexOf(' altpick ');
     const leave = out.lastIndexOf('\x1b[?1049l');
     const picked = out.lastIndexOf('alpha.js');
     const checks = [

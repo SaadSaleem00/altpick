@@ -1,6 +1,6 @@
 //! Talking to the console directly instead of through stdout.
 //!
-//! When a shell hook runs filepick, the shell usually captures the program's
+//! When a shell hook runs altpick, the shell usually captures the program's
 //! output. Drawing on the console itself (CONOUT$ on Windows, /dev/tty
 //! elsewhere) keeps the palette visible no matter what happens to stdout.
 //!
@@ -58,7 +58,7 @@ pub struct Session {
 impl Session {
     pub fn enter() -> io::Result<Session> {
         let out = Term::open().map_err(|e| {
-            io::Error::new(e.kind(), format!("no console to draw on ({e}); run filepick from a terminal"))
+            io::Error::new(e.kind(), format!("no console to draw on ({e}); run altpick from a terminal"))
         })?;
         if let Ok(mut saved) = SAVED_MODES.lock() {
             *saved = Some(imp::Modes::save());
@@ -100,6 +100,16 @@ pub fn restore() {
     }
 }
 
+/// Whether we draw in the classic console window, whose fonts lack most
+/// scripts. `ALTPICK_CLASSIC_CONSOLE=1` (or 0) decides instead, for tests.
+pub fn classic_console() -> bool {
+    match std::env::var("ALTPICK_CLASSIC_CONSOLE").as_deref() {
+        Ok("1") => true,
+        Ok("0") => false,
+        _ => imp::classic_console(),
+    }
+}
+
 /// Make sure a crash never leaves the user's terminal stuck in palette mode.
 pub fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
@@ -127,6 +137,23 @@ mod imp {
         ) -> i32;
         fn GetConsoleMode(console: *mut c_void, mode: *mut u32) -> i32;
         fn SetConsoleMode(console: *mut c_void, mode: u32) -> i32;
+        fn GetConsoleWindow() -> *mut c_void;
+    }
+
+    #[link(name = "user32")]
+    extern "system" {
+        fn IsWindowVisible(window: *mut c_void) -> i32;
+    }
+
+    /// Whether we draw in the classic console window (conhost) rather than a
+    /// terminal like Windows Terminal or VS Code. Those run the console
+    /// hidden behind a pseudo console, so its window isn't visible.
+    pub fn classic_console() -> bool {
+        // SAFETY: both calls take no pointers we own; a null window is handled.
+        unsafe {
+            let window = GetConsoleWindow();
+            !window.is_null() && IsWindowVisible(window) != 0
+        }
     }
 
     fn open_console(name: &str) -> io::Result<File> {
@@ -174,7 +201,7 @@ mod imp {
         }
     }
 
-    /// The console's input and output modes before filepick touched them.
+    /// The console's input and output modes before altpick touched them.
     pub struct Modes {
         input: Option<(File, u32)>,
         output: Option<(File, u32)>,
@@ -220,6 +247,10 @@ mod imp {
             self.0.write_all(bytes)?;
             self.0.flush()
         }
+    }
+
+    pub fn classic_console() -> bool {
+        false
     }
 
     /// crossterm already restores the exact terminal settings on Unix.

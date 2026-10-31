@@ -1,4 +1,4 @@
-//! The settings file, `%APPDATA%\filepick\config.toml`.
+//! The settings file, `%APPDATA%\altpick\config.toml`.
 //!
 //! ```toml
 //! hotkey = "Alt+f"            # PSReadLine notation; read by the shell hooks
@@ -19,17 +19,26 @@ pub struct Config {
     pub extensions: Vec<String>,
 }
 
-/// `%APPDATA%\filepick`, where the settings file and setup's notes live.
-/// `FILEPICK_CONFIG_DIR` overrides it (the tests use that).
+/// `%APPDATA%\altpick`, where the settings file and setup's notes live.
+/// `ALTPICK_CONFIG_DIR` overrides it (the tests use that).
 pub fn dir() -> Option<PathBuf> {
-    if let Some(d) = std::env::var_os("FILEPICK_CONFIG_DIR").filter(|d| !d.is_empty()) {
+    if let Some(d) = std::env::var_os("ALTPICK_CONFIG_DIR").filter(|d| !d.is_empty()) {
         return Some(PathBuf::from(d));
     }
     let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("XDG_CONFIG_HOME"))?;
-    Some(PathBuf::from(base).join("filepick"))
+    Some(PathBuf::from(base).join("altpick"))
 }
 
-/// `%APPDATA%\filepick\config.toml`, or None if APPDATA isn't set.
+/// `%APPDATA%\filepick`, from when AltPick was called filepick. None when
+/// `ALTPICK_CONFIG_DIR` is set, so tests never touch it.
+pub fn old_dir() -> Option<PathBuf> {
+    if std::env::var_os("ALTPICK_CONFIG_DIR").is_some_and(|d| !d.is_empty()) {
+        return None;
+    }
+    Some(PathBuf::from(std::env::var_os("APPDATA")?).join("filepick"))
+}
+
+/// `%APPDATA%\altpick\config.toml`, or None if APPDATA isn't set.
 pub fn path() -> Option<PathBuf> {
     Some(dir()?.join("config.toml"))
 }

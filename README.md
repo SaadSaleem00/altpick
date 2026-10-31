@@ -1,4 +1,4 @@
-# filepick
+# AltPick
 
 Stop typing file names. Press **Alt+F** while typing a command, pick a file
 with the arrow keys, press **Enter**, and its name appears at your cursor.
@@ -32,7 +32,7 @@ Names with spaces or special characters are quoted for you.
 
 ```powershell
 cargo build --release
-. .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe
+. .\shell\altpick-hook.ps1 -Exe .\target\release\altpick.exe
 ```
 
 Then type `node ` and press **Alt+F**.
@@ -40,42 +40,53 @@ Then type `node ` and press **Alt+F**.
 CMD, with Clink installed:
 
 ```bat
-set FILEPICK_EXE=%CD%\target\release\filepick.exe
+set ALTPICK_EXE=%CD%\target\release\altpick.exe
 clink inject --scripts %CD%\shell
 ```
 
 Git Bash:
 
 ```bash
-export FILEPICK_EXE="$PWD/target/release/filepick.exe"
-source shell/filepick.bash
+export ALTPICK_EXE="$PWD/target/release/altpick.exe"
+source shell/altpick.bash
 ```
 
 Plain CMD without Clink has no way to add hotkeys.
 
 ## Turn it on for good
 
-With `filepick.exe` and the three scripts in one folder (as the installer
+With `altpick.exe` and the three scripts in one folder (as the installer
 puts them):
 
 ```
-filepick setup       adds one line to your PowerShell profiles and ~/.bashrc,
-                     and registers the Clink script; running it twice is harmless
-filepick setup --allow-scripts
-                     also lets PowerShell load the hotkey script, if your
-                     execution policy blocks it (sets yours to RemoteSigned)
-filepick remove      undoes exactly what setup did
-filepick doctor      checks everything and says how to fix what's wrong
+altpick setup       adds one line to your PowerShell profiles and ~/.bashrc,
+                    and registers the Clink script; running it twice is harmless
+altpick setup --allow-scripts
+                    also lets PowerShell load the hotkey script, if your
+                    execution policy blocks it (sets yours to RemoteSigned)
+altpick remove      undoes exactly what setup did
+altpick doctor      checks everything and says how to fix what's wrong
 ```
 
 ## Settings
 
-`%APPDATA%\filepick\config.toml`:
+`%APPDATA%\altpick\config.toml`:
 
 ```toml
 hotkey = "Alt+f"            # also e.g. "Ctrl+g", "F2"; avoid Ctrl+Alt (that's AltGr)
 extensions = ["js", "ts"]   # only show these file types (default: everything)
 ```
+
+## Troubleshooting
+
+**Non-English file names show as boxes (or `????`) in the classic CMD
+window.** The classic console window (the black window you get from Start →
+Command Prompt) uses fonts such as Consolas that have no letters for many
+languages, for example Urdu, Arabic, Hindi, Chinese or emoji. AltPick shows
+a note at the bottom of the palette when that happens. The names are still
+right: picking one inserts the correct name and the command works. To see
+them, use **Windows Terminal** (free, in the Microsoft Store and built into
+Windows 11), or the VS Code terminal.
 
 ## Tests
 
@@ -91,9 +102,9 @@ minutes). See the top of each file.
 ## Command-line options
 
 ```
-filepick [--dir PATH] [--out FILE] [--quote none|ps|cmd|sh]
-         [--ext js,ts] [--no-dirs] [--all]
-filepick setup | remove | doctor
+altpick [--dir PATH] [--out FILE] [--quote none|ps|cmd|sh]
+        [--ext js,ts] [--no-dirs] [--all]
+altpick setup | remove | doctor
 ```
 
 Exit codes: `0` picked, `1` cancelled, `2` error.

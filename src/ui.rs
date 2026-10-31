@@ -24,12 +24,15 @@ const PAD: usize = 2;
 const CHROME_ROWS: usize = 4;
 const GRID_TOP: usize = 3;
 const HELP: &str = "↑↓←→ move · Enter pick · Esc cancel · type to filter";
+const FONT_HINT: &str = "Some names can't be shown in this window — Windows Terminal can show them.";
 
 /// Shows the palette and returns the picked entry, or `None` if cancelled.
 pub fn run(dir: &Path, entries: Vec<Entry>) -> io::Result<Option<Entry>> {
     let dir_text = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf()).display().to_string();
     let mut session = Session::enter()?;
     let mut state = State::new(entries);
+    state.font_hint =
+        crate::term::classic_console() && state.entries.iter().any(|e| !console_can_show(&e.name));
     let mut test_keys = test_keys();
 
     loop {
@@ -60,10 +63,10 @@ pub fn run(dir: &Path, entries: Vec<Entry>) -> io::Result<Option<Entry>> {
 }
 
 /// For tests in terminals that can't be sent keys (like mintty):
-/// FILEPICK_TEST_KEYS="text,enter" types "text" and then presses Enter.
+/// ALTPICK_TEST_KEYS="text,enter" types "text" and then presses Enter.
 /// Words: enter, esc, end, home, down, right; anything else is typed.
 fn test_keys() -> std::vec::IntoIter<KeyEvent> {
-    let spec = std::env::var("FILEPICK_TEST_KEYS").unwrap_or_default();
+    let spec = std::env::var("ALTPICK_TEST_KEYS").unwrap_or_default();
     let mut keys = Vec::new();
     for word in spec.split(',').filter(|w| !w.is_empty()) {
         let code = match word {
@@ -103,6 +106,8 @@ struct State {
     visible_rows: usize,
     cell: usize,
     widest: usize,
+    /// Show FONT_HINT above the help line.
+    font_hint: bool,
 }
 
 impl State {
@@ -119,6 +124,7 @@ impl State {
             visible_rows: 1,
             cell: widest,
             widest,
+            font_hint: false,
         }
     }
 
@@ -137,8 +143,12 @@ impl State {
         let usable = w.saturating_sub(1);
         self.cell = self.widest.min(usable.saturating_sub(PAD)).max(1);
         self.cols = (usable / (self.cell + PAD)).max(1);
-        self.visible_rows = h.saturating_sub(CHROME_ROWS).max(1);
+        self.visible_rows = h.saturating_sub(self.chrome_rows()).max(1);
         self.keep_visible();
+    }
+
+    fn chrome_rows(&self) -> usize {
+        CHROME_ROWS + usize::from(self.font_hint)
     }
 
     fn keep_visible(&mut self) {
@@ -235,6 +245,14 @@ fn column_width(entries: &[Entry]) -> usize {
     p90.clamp(widest.min(MIN_CELL), MAX_CELL).max(1)
 }
 
+/// Whether the classic console's fonts (Consolas, Lucida Console, raster)
+/// can draw every letter of `name`. They cover Latin, Greek and Cyrillic,
+/// plus punctuation and symbols; not Arabic, Indic or East Asian scripts,
+/// and nothing outside the Basic Multilingual Plane (emoji).
+fn console_can_show(name: &str) -> bool {
+    name.chars().all(|c| matches!(c as u32, 0..=0x058F | 0x1D00..=0x1FFF | 0x2000..=0x2BFF | 0xFB00..=0xFB06))
+}
+
 fn label(e: &Entry) -> String {
     if e.is_dir {
         format!("{}{MAIN_SEPARATOR}", e.name)
@@ -247,13 +265,13 @@ fn draw(out: &mut impl Write, s: &State, dir_text: &str, w: usize, h: usize) -> 
     let usable = w.saturating_sub(1);
     queue!(out, Hide)?;
 
-    if h < CHROME_ROWS + 1 || usable < 16 {
+    if h < s.chrome_rows() + 1 || usable < 16 {
         queue!(out, MoveTo(0, 0), Clear(ClearType::All), Print(fit("Window too small", usable)))?;
         return out.flush();
     }
 
     // Header: name + folder.
-    let title = " filepick ";
+    let title = " AltPick ";
     queue!(
         out,
         MoveTo(0, 0),
@@ -298,6 +316,17 @@ fn draw(out: &mut impl Write, s: &State, dir_text: &str, w: usize, h: usize) -> 
             draw_cell(out, &s.entries[idx], s.cell, pos == s.sel)?;
         }
         queue!(out, Clear(ClearType::UntilNewLine))?;
+    }
+
+    if s.font_hint {
+        queue!(
+            out,
+            MoveTo(0, (h - 2) as u16),
+            SetForegroundColor(Color::Yellow),
+            Print(fit(&format!(" {FONT_HINT}"), usable)),
+            ResetColor,
+            Clear(ClearType::UntilNewLine),
+        )?;
     }
 
     // Bottom line: the full name if the selected one is cut short, otherwise
@@ -523,6 +552,23 @@ mod tests {
         let entries = (0..5).map(|i| Entry::new(format!("{i}{}", "x".repeat(50)), false)).collect();
         let s = State::new(entries);
         assert_eq!(s.cell, MAX_CELL);
+    }
+
+    #[test]
+    fn console_fonts_lack_some_scripts() {
+        assert!(console_can_show("Café Ünïcode Ελληνικά Кириллица – notes.txt"));
+        assert!(!console_can_show("ساره.txt"));
+        assert!(!console_can_show("日本.txt"));
+        assert!(!console_can_show("🎉.txt"));
+    }
+
+    #[test]
+    fn font_hint_takes_a_row() {
+        let mut s = state(100, 80, 20);
+        let rows = s.visible_rows;
+        s.font_hint = true;
+        s.fit(80, 20);
+        assert_eq!(s.visible_rows, rows - 1);
     }
 
     #[test]

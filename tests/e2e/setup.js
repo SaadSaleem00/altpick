@@ -1,4 +1,4 @@
-// Tests `filepick setup` and `filepick remove` against throwaway files only:
+// Tests `altpick setup` and `altpick remove` against throwaway files only:
 // a fake install folder, fake PowerShell profiles, a fake .bashrc and a fake
 // settings folder, all in %TEMP%. Never touches the real profile, Clink or the
 // execution policy.
@@ -12,7 +12,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const EXE = path.join(ROOT, 'target', 'release', 'filepick.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'altpick.exe');
 
 let failed = 0;
 function check(title, fn) {
@@ -52,18 +52,18 @@ function main() {
     console.error(`Build first: cargo build --release (missing ${EXE})`);
     process.exit(2);
   }
-  console.log('\n== filepick setup / remove (sandboxed) ==');
+  console.log('\n== altpick setup / remove (sandboxed) ==');
 
   // %TEMP% is inside %LOCALAPPDATA%, so this also checks the
   // "$env:LOCALAPPDATA\..." form of the profile line.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-setup-'));
-  const install = path.join(tmp, 'Programs', 'filepick');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick-setup-'));
+  const install = path.join(tmp, 'Programs', 'altpick');
   fs.mkdirSync(install, { recursive: true });
-  fs.copyFileSync(EXE, path.join(install, 'filepick.exe'));
-  for (const f of ['filepick-hook.ps1', 'filepick.lua', 'filepick.bash']) {
+  fs.copyFileSync(EXE, path.join(install, 'altpick.exe'));
+  for (const f of ['altpick-hook.ps1', 'altpick.lua', 'altpick.bash']) {
     fs.copyFileSync(path.join(ROOT, 'shell', f), path.join(install, f));
   }
-  const exe = path.join(install, 'filepick.exe');
+  const exe = path.join(install, 'altpick.exe');
 
   const newProfile = path.join(tmp, 'Documents', 'WindowsPowerShell', 'profile.ps1'); // doesn't exist yet
   const oldProfile = path.join(tmp, 'old-profile.ps1');
@@ -75,7 +75,7 @@ function main() {
   for (const [f, b] of Object.entries(originals)) fs.writeFileSync(f, b);
 
   const configDir = path.join(tmp, 'config');
-  const env = { FILEPICK_CONFIG_DIR: configDir };
+  const env = { ALTPICK_CONFIG_DIR: configDir };
   const args = ['--profile', newProfile, '--profile', oldProfile, '--bashrc', bashrc, '--no-clink'];
 
   try {
@@ -90,7 +90,7 @@ function main() {
       const b = first[newProfile];
       assert.deepStrictEqual([...b.slice(0, 3)], [0xef, 0xbb, 0xbf]);
       const text = b.slice(3).toString('utf8');
-      assert.match(text, /^if \(Test-Path -LiteralPath "\$env:LOCALAPPDATA\\.*\\filepick-hook\.ps1"\) \{ \. ".*" -Quiet \}  # filepick-setup\r\n$/);
+      assert.match(text, /^if \(Test-Path -LiteralPath "\$env:LOCALAPPDATA\\.*\\altpick-hook\.ps1"\) \{ \. ".*" -Quiet \}  # altpick-setup\r\n$/);
     });
 
     check('the UTF-16 profile stays UTF-16, with its own lines kept', () => {
@@ -98,12 +98,12 @@ function main() {
       assert.deepStrictEqual([...b.slice(0, 2)], [0xff, 0xfe]);
       const text = b.slice(2).toString('utf16le');
       assert.ok(text.startsWith('# my settings\r\nSet-Alias ll Get-ChildItem\r\nif (Test-Path'), text);
-      assert.ok(text.endsWith('# filepick-setup\r\n'), text);
+      assert.ok(text.endsWith('# altpick-setup\r\n'), text);
     });
 
     check('.bashrc gets one LF line', () => {
       const text = first[bashrc].toString('utf8');
-      assert.match(text, /^alias ll='ls -l'\n\[ -f "\$LOCALAPPDATA\/.*\/filepick\.bash" \] && \. ".*"  # filepick-setup\n$/);
+      assert.match(text, /^alias ll='ls -l'\n\[ -f "\$LOCALAPPDATA\/.*\/altpick\.bash" \] && \. ".*"  # altpick-setup\n$/);
     });
 
     check('running setup again changes nothing', () => {
@@ -116,7 +116,7 @@ function main() {
     fs.mkdirSync(configDir, { recursive: true });
     fs.writeFileSync(path.join(configDir, 'config.toml'), 'hotkey = "Alt+p"\n');
 
-    check('`filepick key` gives the hotkey in readline notation', () => {
+    check('`altpick key` gives the hotkey in readline notation', () => {
       assert.strictEqual(run(exe, ['key'], env).out.trim(), '\\ep');
     });
 
@@ -127,14 +127,14 @@ function main() {
         check(`${name}: the line in ${path.basename(profile)} binds the hotkey from the settings`, () => {
           const script =
             `. '${profile.replace(/'/g, "''")}'; ` +
-            `Get-PSReadLineKeyHandler -Bound | Where-Object { $_.Function -eq 'filepick' } | ForEach-Object { $_.Key }`;
+            `Get-PSReadLineKeyHandler -Bound | Where-Object { $_.Function -eq 'altpick' } | ForEach-Object { $_.Key }`;
           const r = run(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script], env);
           assert.strictEqual(r.out.trim(), 'Alt+p', r.out);
         });
       }
-      check(`${name}: the line does nothing (and no error) if filepick was deleted`, () => {
+      check(`${name}: the line does nothing (and no error) if altpick was deleted`, () => {
         const gone = path.join(tmp, 'gone.ps1');
-        fs.writeFileSync(gone, fs.readFileSync(newProfile).toString('utf8').replace('filepick-hook.ps1', 'not-there.ps1'));
+        fs.writeFileSync(gone, fs.readFileSync(newProfile).toString('utf8').replace('altpick-hook.ps1', 'not-there.ps1'));
         const r = run(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `. '${gone}'; 'fine'`], env);
         assert.strictEqual(r.out.trim(), 'fine', r.out);
       });
@@ -144,7 +144,7 @@ function main() {
     if (bash) {
       check('Git Bash: the .bashrc line binds the hotkey from the settings', () => {
         const r = run(bash, ['--noprofile', '--rcfile', bashrc.replace(/\\/g, '/'), '-i', '-c', 'bind -X'], { ...env, HISTFILE: '/dev/null' });
-        assert.match(r.out, /"\\ep":? "__filepick_pick"/, r.out);
+        assert.match(r.out, /"\\ep":? "__altpick_pick"/, r.out);
       });
     }
 
@@ -159,6 +159,19 @@ function main() {
     check('remove twice is harmless', () => {
       const r = run(exe, ['remove', ...args], env);
       assert.strictEqual(r.code, 0, r.out);
+    });
+
+    check('setup replaces a line from the old name (filepick), remove takes it out', () => {
+      const legacy = path.join(tmp, 'legacy-profile.ps1');
+      const original = 'Set-Alias ll Get-ChildItem\r\n';
+      fs.writeFileSync(legacy, `${original}if (Test-Path x) { . x -Quiet }  # filepick-setup\r\n`);
+      const largs = ['--profile', legacy, '--no-clink', '--no-bash'];
+      const lenv = { ALTPICK_CONFIG_DIR: path.join(tmp, 'legacy-config') };
+      assert.strictEqual(run(exe, ['setup', ...largs], lenv).code, 0);
+      const text = fs.readFileSync(legacy, 'utf8');
+      assert.ok(!text.includes('# filepick-setup') && text.includes('# altpick-setup'), text);
+      assert.strictEqual(run(exe, ['remove', ...largs], lenv).code, 0);
+      assert.strictEqual(fs.readFileSync(legacy, 'utf8'), original);
     });
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true });

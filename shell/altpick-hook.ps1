@@ -1,9 +1,9 @@
 <#
 .SYNOPSIS
-    filepick hotkey for PowerShell (Windows PowerShell 5.1 and PowerShell 7).
+    altpick hotkey for PowerShell (Windows PowerShell 5.1 and PowerShell 7).
 
 .DESCRIPTION
-    While typing a command, press the hotkey (Alt+F by default). The filepick
+    While typing a command, press the hotkey (Alt+F by default). The altpick
     palette opens with the files in the current folder. Pick one with the
     arrow keys and press Enter: its name is typed at your cursor. Esc cancels.
 
@@ -11,16 +11,16 @@
     PowerShell window.
 
 .EXAMPLE
-    . .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe
+    . .\shell\altpick-hook.ps1 -Exe .\target\release\altpick.exe
     Turn the hotkey on in this window (note the leading dot and space).
 
 .EXAMPLE
-    . .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe -Chord 'Ctrl+Alt+p'
+    . .\shell\altpick-hook.ps1 -Exe .\target\release\altpick.exe -Chord 'Ctrl+Alt+p'
     Use a different hotkey.
 #>
 [CmdletBinding()]
 param(
-    # Path to filepick.exe. If left out, looks next to this script, then on PATH.
+    # Path to altpick.exe. If left out, looks next to this script, then on PATH.
     [string]$Exe,
     # PSReadLine key chord, e.g. 'Alt+f', 'Ctrl+Alt+p', 'F2'.
     [string]$Chord = 'Alt+f',
@@ -29,14 +29,14 @@ param(
 )
 
 if (-not (Get-Command Set-PSReadLineKeyHandler -ErrorAction SilentlyContinue)) {
-    Write-Warning "filepick: PSReadLine isn't available in this window, so the hotkey can't be set."
+    Write-Warning "altpick: PSReadLine isn't available in this window, so the hotkey can't be set."
     return
 }
 
 # No -Chord given: use the hotkey from the settings file, if there is one.
 if (-not $PSBoundParameters.ContainsKey('Chord')) {
     try {
-        $configDir = if ($env:FILEPICK_CONFIG_DIR) { $env:FILEPICK_CONFIG_DIR } else { Join-Path $env:APPDATA 'filepick' }
+        $configDir = if ($env:ALTPICK_CONFIG_DIR) { $env:ALTPICK_CONFIG_DIR } else { Join-Path $env:APPDATA 'altpick' }
         $config = Join-Path $configDir 'config.toml'
         if (Test-Path -LiteralPath $config -PathType Leaf) {
             foreach ($line in [System.IO.File]::ReadAllLines($config)) {
@@ -48,24 +48,24 @@ if (-not $PSBoundParameters.ContainsKey('Chord')) {
 }
 
 if (-not $Exe) {
-    $nextToScript = Join-Path $PSScriptRoot 'filepick.exe'
+    $nextToScript = Join-Path $PSScriptRoot 'altpick.exe'
     if (Test-Path -LiteralPath $nextToScript -PathType Leaf) {
         $Exe = $nextToScript
     }
     else {
-        $found = Get-Command 'filepick.exe' -CommandType Application -ErrorAction SilentlyContinue |
+        $found = Get-Command 'altpick.exe' -CommandType Application -ErrorAction SilentlyContinue |
             Select-Object -First 1
         if ($found) { $Exe = $found.Path }
     }
 }
 if (-not $Exe -or -not (Test-Path -LiteralPath $Exe -PathType Leaf)) {
-    Write-Warning "filepick: can't find filepick.exe. Pass its path with -Exe."
+    Write-Warning "altpick: can't find altpick.exe. Pass its path with -Exe."
     return
 }
-$global:FilePickExe = (Resolve-Path -LiteralPath $Exe).ProviderPath
+$global:AltPickExe = (Resolve-Path -LiteralPath $Exe).ProviderPath
 
 Set-PSReadLineKeyHandler -Chord $Chord `
-    -BriefDescription 'filepick' `
+    -BriefDescription 'altpick' `
     -Description 'Pick a file from the current folder and type its name at the cursor' `
     -ScriptBlock {
         param($key, $arg)
@@ -90,7 +90,7 @@ Set-PSReadLineKeyHandler -Chord $Chord `
                 $tmp = [System.IO.Path]::GetTempFileName()
 
                 $start = New-Object System.Diagnostics.ProcessStartInfo
-                $start.FileName = $global:FilePickExe
+                $start.FileName = $global:AltPickExe
                 # The folder is passed as the working directory rather than an
                 # argument, so paths like C:\ need no quoting tricks.
                 $start.WorkingDirectory = $location.ProviderPath
@@ -120,5 +120,5 @@ Set-PSReadLineKeyHandler -Chord $Chord `
     }
 
 if (-not $Quiet) {
-    Write-Host "filepick: press $Chord while typing to pick a file." -ForegroundColor DarkGray
+    Write-Host "altpick: press $Chord while typing to pick a file." -ForegroundColor DarkGray
 }

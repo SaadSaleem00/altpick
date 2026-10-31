@@ -1,30 +1,30 @@
--- filepick hotkey for CMD, through Clink (https://chrisant996.github.io/clink/).
+-- altpick hotkey for CMD, through Clink (https://chrisant996.github.io/clink/).
 --
--- While typing a command, press Alt+F. The filepick palette opens with the
+-- While typing a command, press Alt+F. The altpick palette opens with the
 -- files in the current folder. Pick one with the arrow keys and press Enter:
 -- its name is typed at your cursor. Esc cancels.
 --
 -- Clink loads every .lua file in its script folders. To try this one in a
 -- single CMD window without changing any settings:
 --
---   set FILEPICK_EXE=C:\path\to\filepick.exe
---   clink inject --scripts C:\path\to\filepick\shell
+--   set ALTPICK_EXE=C:\path\to\altpick.exe
+--   clink inject --scripts C:\path\to\altpick\shell
 --
--- filepick.exe is looked for in this order: %FILEPICK_EXE%, next to this
+-- altpick.exe is looked for in this order: %ALTPICK_EXE%, next to this
 -- script, then on PATH.
 --
--- The key comes from the filepick settings file (hotkey = "Alt+f" in
--- %APPDATA%\filepick\config.toml), via `filepick.exe key`. You can also bind
+-- The key comes from the altpick settings file (hotkey = "Alt+f" in
+-- %APPDATA%\altpick\config.toml), via `altpick.exe key`. You can also bind
 -- one in Clink's .inputrc, e.g.
---   "\e[12~": "luafunc:filepick_pick"     (F2)
+--   "\e[12~": "luafunc:altpick_pick"     (F2)
 
--- Two copies can be loaded at once (say, one registered by `filepick setup`
+-- Two copies can be loaded at once (say, one registered by `altpick setup`
 -- and one from `clink inject --scripts`, which Clink loads first). The first
 -- one wins; later ones step aside.
-if FILEPICK_LOADED then
+if ALTPICK_LOADED then
     return
 end
-FILEPICK_LOADED = true
+ALTPICK_LOADED = true
 
 local function script_dir()
     local source = debug.getinfo(1, "S").source
@@ -32,18 +32,18 @@ local function script_dir()
 end
 
 local function find_exe()
-    local exe = os.getenv("FILEPICK_EXE")
+    local exe = os.getenv("ALTPICK_EXE")
     if exe and os.isfile(exe) then
         return exe
     end
     local dir = script_dir()
     if dir then
-        local nearby = path.join(dir, "filepick.exe")
+        local nearby = path.join(dir, "altpick.exe")
         if os.isfile(nearby) then
             return nearby
         end
     end
-    return "filepick.exe"
+    return "altpick.exe"
 end
 
 -- Runs the palette in the current folder and returns the picked name,
@@ -51,7 +51,7 @@ end
 local function run_palette()
     -- The pick comes back through a temp file (UTF-8), so names in any
     -- language survive. The palette draws on the console directly.
-    local file, tmp = os.createtmpfile("filepick", ".txt")
+    local file, tmp = os.createtmpfile("altpick", ".txt")
     if not file then
         return nil
     end
@@ -76,8 +76,8 @@ local function run_palette()
     return pick
 end
 
--- Global, so Clink can bind it as "luafunc:filepick_pick".
-function filepick_pick(rl_buffer)
+-- Global, so Clink can bind it as "luafunc:altpick_pick".
+function altpick_pick(rl_buffer)
     -- Never break the user's command line because of the palette.
     local ok, pick = pcall(run_palette)
     if ok and pick and pick ~= "" then
@@ -87,7 +87,7 @@ function filepick_pick(rl_buffer)
 end
 
 if rl.describemacro then
-    rl.describemacro([["luafunc:filepick_pick"]], "Pick a file from the current folder and type its name at the cursor")
+    rl.describemacro([["luafunc:altpick_pick"]], "Pick a file from the current folder and type its name at the cursor")
 end
 -- The hotkey in readline notation; Alt+F (\ef) unless the settings say otherwise.
 local function hotkey()
@@ -106,4 +106,4 @@ local function hotkey()
     return [[\ef]]
 end
 
-rl.setbinding('"' .. hotkey() .. '"', [["luafunc:filepick_pick"]])
+rl.setbinding('"' .. hotkey() .. '"', [["luafunc:altpick_pick"]])

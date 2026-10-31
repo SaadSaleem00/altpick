@@ -10,10 +10,10 @@
 // CMD with Clink (if Clink is found) and Git Bash (if installed).
 //
 // Settings (environment variables):
-//   FILEPICK_SUITE=<text>   only run suites whose name (lower case, no
+//   ALTPICK_SUITE=<text>   only run suites whose name (lower case, no
 //                           spaces) contains <text>, e.g. "cmd" or "bash"
-//   FILEPICK_HOOK=<file>    test another PowerShell hook file
-//   FILEPICK_PROFILE=1      also load the user's own PowerShell profile
+//   ALTPICK_HOOK=<file>    test another PowerShell hook file
+//   ALTPICK_PROFILE=1      also load the user's own PowerShell profile
 //
 // The tests never write to the user's shell history.
 //
@@ -28,10 +28,10 @@ const { Terminal } = require('@xterm/headless');
 const pses = require('./pses');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const EXE = path.join(ROOT, 'target', 'release', 'filepick.exe');
+const EXE = path.join(ROOT, 'target', 'release', 'altpick.exe');
 const SHELL_DIR = path.join(ROOT, 'shell');
-const PS_HOOK = process.env.FILEPICK_HOOK || path.join(SHELL_DIR, 'filepick-hook.ps1');
-const BASH_HOOK = path.join(SHELL_DIR, 'filepick.bash');
+const PS_HOOK = process.env.ALTPICK_HOOK || path.join(SHELL_DIR, 'altpick-hook.ps1');
+const BASH_HOOK = path.join(SHELL_DIR, 'altpick.bash');
 const COLS = 140;
 const ROWS = 40;
 
@@ -41,7 +41,7 @@ const ESC = '\x1b';
 const END = '\x1b[F';
 
 // Test files, including the awkward cases.
-const FILES = ['alpha.js', "it's.txt", 'my file.txt', 'اردو.txt'];
+const FILES = ['alpha.js', 'beta.md', "it's.txt", 'my file.txt', 'اردو.txt'];
 const DIRS = ['sub dir'];
 
 /** A copy of env without PSModulePath (see the Shell constructor). */
@@ -91,8 +91,8 @@ const POWERSHELL = {
   errorsCheck: `"errors=" + $error.Count`,
   crash: /exception occurred in custom key handler/i,
   badExe: {
-    setup: `$saved = $global:FilePickExe; $global:FilePickExe = 'C:\\no\\such\\filepick.exe'`,
-    teardown: '$global:FilePickExe = $saved',
+    setup: `$saved = $global:AltPickExe; $global:AltPickExe = 'C:\\no\\such\\altpick.exe'`,
+    teardown: '$global:AltPickExe = $saved',
   },
   hasProviders: true,
 };
@@ -108,10 +108,10 @@ const CMD = {
   quote: (n) => (needsQuotes(n) ? `"${n}"` : n),
   version: 'ver',
   load: null, // Clink loads the script at startup (see cmdArgs).
-  crash: /filepick\.lua:\d+/,
+  crash: /altpick\.lua:\d+/,
   badExe: {
-    setup: 'set "FILEPICK_SAVED=%FILEPICK_EXE%" & set "FILEPICK_EXE=C:\\no\\such\\filepick.exe"',
-    teardown: 'set "FILEPICK_EXE=%FILEPICK_SAVED%"',
+    setup: 'set "ALTPICK_SAVED=%ALTPICK_EXE%" & set "ALTPICK_EXE=C:\\no\\such\\altpick.exe"',
+    teardown: 'set "ALTPICK_EXE=%ALTPICK_SAVED%"',
   },
 };
 
@@ -126,10 +126,10 @@ const BASH = {
   quote: (n) => (needsQuotes(n) ? shQuote(n) : n),
   version: 'echo "bash $BASH_VERSION"',
   load: () => `source ${shQuote(BASH_HOOK.replace(/\\/g, '/'))}`,
-  crash: /__filepick|filepick\.bash/,
+  crash: /__altpick|altpick\.bash/,
   badExe: {
-    setup: 'FILEPICK_SAVED=$FILEPICK_EXE; FILEPICK_EXE=/c/no/such/filepick.exe',
-    teardown: 'FILEPICK_EXE=$FILEPICK_SAVED',
+    setup: 'ALTPICK_SAVED=$ALTPICK_EXE; ALTPICK_EXE=/c/no/such/altpick.exe',
+    teardown: 'ALTPICK_EXE=$ALTPICK_SAVED',
   },
 };
 
@@ -255,7 +255,7 @@ class Shell {
 }
 
 function makeTestFolder() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick e2e '));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick e2e '));
   for (const f of FILES) fs.writeFileSync(path.join(dir, f), 'x');
   for (const d of DIRS) fs.mkdirSync(path.join(dir, d));
   return dir;
@@ -263,7 +263,7 @@ function makeTestFolder() {
 
 /** The errors PowerShell recorded, in full, for diagnosing failures. */
 async function dumpPowerShellErrors(sh, dir) {
-  const file = path.join(dir, '..', `filepick-e2e-errors-${process.pid}.txt`);
+  const file = path.join(dir, '..', `altpick-e2e-errors-${process.pid}.txt`);
   await sh.run(
     `$error | ForEach-Object { '----'; $_ | Format-List * -Force | Out-String -Width 300; ` +
       `if ($_.Exception.InnerException) { 'INNER: ' + $_.Exception.InnerException.ToString() } } | ` +
@@ -284,10 +284,13 @@ async function dumpPowerShellErrors(sh, dir) {
  * Pick `name` by typing `filter` (or pressing `keys`) in the palette. The
  * line must then end with the quoted name, and running it must print "[name]".
  */
-function pickCase(kind, title, { name, filter, keys, cwd }) {
+function pickCase(kind, title, { name, filter, keys, cwd, hint, setup, teardown }) {
   return {
     title,
     cwd,
+    hint,
+    setup,
+    teardown,
     prefix: kind.show.prefix,
     suffix: kind.show.suffix,
     drive: async (s) => {
@@ -311,7 +314,11 @@ function casesFor(kind) {
     pickCase(kind, 'filter and pick a plain name', { name: 'alpha.js', filter: 'alp' }),
     pickCase(kind, 'name with a space is quoted', { name: 'my file.txt', filter: 'my f' }),
     pickCase(kind, 'name with an apostrophe is quoted', { name: "it's.txt", filter: 'it' }),
-    pickCase(kind, 'Urdu name', { name: 'اردو.txt', filter: 'اردو' }),
+    pickCase(kind, 'Urdu name (no font hint outside the classic console)', {
+      name: 'اردو.txt',
+      filter: 'اردو',
+      hint: false,
+    }),
     pickCase(kind, 'End key picks the folder (last item)', { name: 'sub dir', keys: END }),
     pickCase(kind, 'works in C:\\', { name: 'Windows', filter: 'windows', cwd: 'C:\\' }),
     unchangedCase('Esc leaves the line alone', kind.echo('keep'), 'keep', {
@@ -337,6 +344,19 @@ function casesFor(kind) {
       }),
     );
   }
+  // Its own file: PSReadLine 2.1+ would show a prediction from an earlier
+  // pick of the same name at the end of the line.
+  if (kind.hasProviders) {
+    cases.unshift(
+      pickCase(kind, 'classic console: hint about names its fonts lack', {
+        name: 'beta.md',
+        filter: 'bet',
+        hint: true,
+        setup: "$env:ALTPICK_CLASSIC_CONSOLE = '1'",
+        teardown: 'Remove-Item Env:ALTPICK_CLASSIC_CONSOLE',
+      }),
+    );
+  }
   return cases;
 }
 
@@ -353,16 +373,22 @@ function shownAs(text) {
   return new RegExp(`${parts.join('')}$`, 'u');
 }
 
+const HINT = "Windows Terminal can show them";
+
 async function runCase(sh, c, dir) {
   const k = sh.kind;
   const start = `=== case ${Math.random().toString(36).slice(2)} ===`;
   const setup = c.setup ? `${k.sep}${c.setup}` : '';
   await sh.run(`${k.cd(c.cwd ?? dir)}${setup}${k.sep}${k.say(start)}`);
 
+  let hintProblem = null;
   await sh.type(c.prefix);
   await sh.key(ALT_F, 0);
   if (c.palette) {
-    await sh.waitFor('the palette', (t) => t.includes(' filepick ') && t.includes('Esc cancel'));
+    await sh.waitFor('the palette', (t) => t.includes(' AltPick ') && t.includes('Esc cancel'));
+    if (c.hint !== undefined && sh.screen().includes(HINT) !== c.hint) {
+      hintProblem = c.hint ? 'the font hint is missing' : 'the font hint showed up';
+    }
     await c.drive(sh);
     await sh.waitFor('the palette to close', (t) => !t.includes('Esc cancel'));
   } else {
@@ -381,7 +407,7 @@ async function runCase(sh, c, dir) {
 
   const all = sh.lines();
   const out = all.slice(all.lastIndexOf(start));
-  const problems = [];
+  const problems = hintProblem ? [hintProblem] : [];
   if (!out.some((l) => l === c.expect)) {
     const near = out.filter((l) => l.includes(c.expect)).map((l) => JSON.stringify(l));
     problems.push(`expected an output line "${c.expect}"; similar lines: ${near.join(', ')}`);
@@ -495,9 +521,9 @@ function findGitBash() {
   ]);
 }
 
-// FILEPICK_PROFILE=1 loads the user's own PowerShell profile too, like a real
+// ALTPICK_PROFILE=1 loads the user's own PowerShell profile too, like a real
 // terminal does. Off by default so the tests don't depend on this machine.
-const PROFILE_ARGS = process.env.FILEPICK_PROFILE === '1' ? [] : ['-NoProfile'];
+const PROFILE_ARGS = process.env.ALTPICK_PROFILE === '1' ? [] : ['-NoProfile'];
 
 // Keeps the test commands out of the user's real PSReadLine history.
 const NO_HISTORY = 'Set-PSReadLineOption -HistorySaveStyle SaveNothing';
@@ -541,7 +567,7 @@ function extensionSuite(ext, label, exe) {
 
 /** CMD with Clink injected for this window only, using a throwaway Clink profile. */
 function cmdSuite(clink, label, ptyOptions = {}) {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-clink-'));
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick-clink-'));
   const inject = `"${clink}" inject -q --profile "${profile}" --scripts "${SHELL_DIR}"`;
   return {
     label,
@@ -550,7 +576,7 @@ function cmdSuite(clink, label, ptyOptions = {}) {
     // A raw command line: node-pty would otherwise escape the quotes. /k strips
     // the outer pair of quotes. /d skips any AutoRun commands.
     args: `/d /k "${inject}"`,
-    env: { FILEPICK_EXE: EXE },
+    env: { ALTPICK_EXE: EXE },
     ptyOptions,
     start: async () => () => fs.rmSync(profile, { recursive: true, force: true }),
   };
@@ -563,29 +589,29 @@ function bashSuite(bash, label) {
     file: bash,
     args: ['--noprofile', '--norc', '-i'],
     // No history file; a prompt the tests can recognize.
-    env: { FILEPICK_EXE: EXE, HISTFILE: '/dev/null', PS1: 'BASH$ ', CHERE_INVOKING: '1' },
+    env: { ALTPICK_EXE: EXE, HISTFILE: '/dev/null', PS1: 'BASH$ ', CHERE_INVOKING: '1' },
   };
 }
 
 /**
  * A throwaway copy of the installed layout (exe and scripts in one folder),
- * set up with `filepick setup` into a fake profile and .bashrc. Shells that
+ * set up with `altpick setup` into a fake profile and .bashrc. Shells that
  * load only those files show the hotkey works the way an install does: no
- * -Exe and no FILEPICK_EXE, just the line setup wrote.
+ * -Exe and no ALTPICK_EXE, just the line setup wrote.
  */
 function makeInstall() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'filepick-install-'));
-  const dir = path.join(root, 'Programs', 'filepick');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'altpick-install-'));
+  const dir = path.join(root, 'Programs', 'altpick');
   fs.mkdirSync(dir, { recursive: true });
-  fs.copyFileSync(EXE, path.join(dir, 'filepick.exe'));
-  for (const f of ['filepick-hook.ps1', 'filepick.lua', 'filepick.bash']) fs.copyFileSync(path.join(SHELL_DIR, f), path.join(dir, f));
+  fs.copyFileSync(EXE, path.join(dir, 'altpick.exe'));
+  for (const f of ['altpick-hook.ps1', 'altpick.lua', 'altpick.bash']) fs.copyFileSync(path.join(SHELL_DIR, f), path.join(dir, f));
   const profile = path.join(root, 'profile.ps1');
   const bashrc = path.join(root, '.bashrc');
   // The user's own line. It sets the test prompt, because Git's
   // /etc/bash.bashrc runs first and sets its own.
   fs.writeFileSync(bashrc, "PS1='BASH$ '\n");
-  const env = { FILEPICK_CONFIG_DIR: path.join(root, 'config') };
-  execFileSync(path.join(dir, 'filepick.exe'), ['setup', '--profile', profile, '--bashrc', bashrc, '--no-clink'], {
+  const env = { ALTPICK_CONFIG_DIR: path.join(root, 'config') };
+  execFileSync(path.join(dir, 'altpick.exe'), ['setup', '--profile', profile, '--bashrc', bashrc, '--no-clink'], {
     env: { ...process.env, ...env },
     stdio: 'ignore',
   });
@@ -645,9 +671,9 @@ async function main() {
   if (bash) suites.push(bashSuite(bash, 'Git Bash'));
   else console.log('(Git Bash not found: skipping it)');
 
-  // As installed by `filepick setup` (see makeInstall).
+  // As installed by `altpick setup` (see makeInstall).
   suites.push({
-    label: 'Windows PowerShell 5.1 after filepick setup',
+    label: 'Windows PowerShell 5.1 after altpick setup',
     kind: { ...POWERSHELL, load: () => `. ${psQuote(install.profile)}`, badExe: null },
     file: 'powershell.exe',
     args: plainArgs(),
@@ -655,7 +681,7 @@ async function main() {
   });
   if (bash) {
     suites.push({
-      label: 'Git Bash after filepick setup',
+      label: 'Git Bash after altpick setup',
       kind: { ...BASH, load: null, badExe: null },
       file: bash,
       args: ['--noprofile', '--rcfile', install.bashrc.replace(/\\/g, '/'), '-i'],
@@ -663,11 +689,11 @@ async function main() {
     });
   }
 
-  const only = (process.env.FILEPICK_SUITE || '').toLowerCase();
+  const only = (process.env.ALTPICK_SUITE || '').toLowerCase();
   const key = (label) => label.toLowerCase().replace(/ /g, '');
   const chosen = suites.filter((s) => !only || key(s.label).includes(only));
   if (chosen.length === 0) {
-    console.error(`FILEPICK_SUITE=${only} matches no suite. Suites:\n${suites.map((s) => `  ${key(s.label)}`).join('\n')}`);
+    console.error(`ALTPICK_SUITE=${only} matches no suite. Suites:\n${suites.map((s) => `  ${key(s.label)}`).join('\n')}`);
     process.exit(2);
   }
 

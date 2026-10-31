@@ -1,8 +1,8 @@
-//! filepick — a hotkey file palette for the terminal.
+//! altpick — a hotkey file palette for the terminal.
 //!
 //! Shows the files in a folder as a grid, lets you move with the arrow keys
 //! and filter by typing, and hands back the name you pick. A small shell hook
-//! (see `shell/filepick-hook.ps1`) binds it to a hotkey and pastes the name at the
+//! (see `shell/altpick-hook.ps1`) binds it to a hotkey and pastes the name at the
 //! cursor.
 //!
 //! Exit codes: 0 = picked, 1 = cancelled, 2 = error.
@@ -22,11 +22,11 @@ use std::process::ExitCode;
 use quote::QuoteStyle;
 
 const HELP: &str = "\
-filepick - pick a file from the current folder with the arrow keys
+AltPick - pick a file from the current folder with the arrow keys
 
 USAGE:
-    filepick [OPTIONS]
-    filepick setup | remove | doctor    Turn the hotkey on / off / check it (see filepick setup --help)
+    altpick [OPTIONS]
+    altpick setup | remove | doctor    Turn the hotkey on / off / check it (see altpick setup --help)
 
 OPTIONS:
     --dir <PATH>        Folder to list (default: current folder)
@@ -126,7 +126,7 @@ fn parse_args() -> Result<Parsed, String> {
                 return Ok(Parsed::Exit(ExitCode::SUCCESS));
             }
             "-V" | "--version" => {
-                println!("filepick {}", env!("CARGO_PKG_VERSION"));
+                println!("altpick {}", env!("CARGO_PKG_VERSION"));
                 return Ok(Parsed::Exit(ExitCode::SUCCESS));
             }
             other => return Err(format!("unknown option '{other}' (try --help)")),
@@ -175,7 +175,7 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(msg) => {
-            eprintln!("filepick: {msg}");
+            eprintln!("altpick: {msg}");
             ExitCode::from(2)
         }
     }
