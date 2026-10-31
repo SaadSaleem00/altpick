@@ -25,8 +25,15 @@ function check(title, fn) {
   }
 }
 
+// PSModulePath from a PowerShell 7 parent would make Windows PowerShell load 7's modules.
+function withoutModulePath(env) {
+  const out = { ...env };
+  for (const k of Object.keys(out)) if (k.toLowerCase() === 'psmodulepath') delete out[k];
+  return out;
+}
+
 function run(exe, args, env) {
-  const r = spawnSync(exe, args, { encoding: 'utf8', env: { ...process.env, ...env }, windowsHide: true });
+  const r = spawnSync(exe, args, { encoding: 'utf8', env: withoutModulePath({ ...process.env, ...env }), windowsHide: true });
   if (r.error) throw r.error;
   return { code: r.status, out: (r.stdout || '') + (r.stderr || '') };
 }
@@ -53,7 +60,7 @@ function main() {
   const install = path.join(tmp, 'Programs', 'filepick');
   fs.mkdirSync(install, { recursive: true });
   fs.copyFileSync(EXE, path.join(install, 'filepick.exe'));
-  for (const f of ['filepick.ps1', 'filepick.lua', 'filepick.bash']) {
+  for (const f of ['filepick-hook.ps1', 'filepick.lua', 'filepick.bash']) {
     fs.copyFileSync(path.join(ROOT, 'shell', f), path.join(install, f));
   }
   const exe = path.join(install, 'filepick.exe');
@@ -83,7 +90,7 @@ function main() {
       const b = first[newProfile];
       assert.deepStrictEqual([...b.slice(0, 3)], [0xef, 0xbb, 0xbf]);
       const text = b.slice(3).toString('utf8');
-      assert.match(text, /^if \(Test-Path -LiteralPath "\$env:LOCALAPPDATA\\.*\\filepick\.ps1"\) \{ \. ".*" -Quiet \}  # filepick-setup\r\n$/);
+      assert.match(text, /^if \(Test-Path -LiteralPath "\$env:LOCALAPPDATA\\.*\\filepick-hook\.ps1"\) \{ \. ".*" -Quiet \}  # filepick-setup\r\n$/);
     });
 
     check('the UTF-16 profile stays UTF-16, with its own lines kept', () => {
@@ -127,7 +134,7 @@ function main() {
       }
       check(`${name}: the line does nothing (and no error) if filepick was deleted`, () => {
         const gone = path.join(tmp, 'gone.ps1');
-        fs.writeFileSync(gone, fs.readFileSync(newProfile).toString('utf8').replace('filepick.ps1', 'not-there.ps1'));
+        fs.writeFileSync(gone, fs.readFileSync(newProfile).toString('utf8').replace('filepick-hook.ps1', 'not-there.ps1'));
         const r = run(ps, ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', `. '${gone}'; 'fine'`], env);
         assert.strictEqual(r.out.trim(), 'fine', r.out);
       });

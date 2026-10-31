@@ -6,7 +6,7 @@
 //! nothing. It writes down what it did in `%APPDATA%\filepick\setup-state.txt`
 //! so `remove` can undo exactly that.
 //!
-//! The hook scripts (filepick.ps1, .lua, .bash) are expected next to
+//! The hook scripts (filepick-hook.ps1, .lua, .bash) are expected next to
 //! filepick.exe, as the installer puts them; --hooks DIR points elsewhere.
 
 use std::collections::BTreeMap;
@@ -30,7 +30,7 @@ USAGE:
 OPTIONS:
     --allow-scripts     Let PowerShell load the hotkey script: sets the
                         CurrentUser execution policy to RemoteSigned if needed
-    --hooks <DIR>       Folder with filepick.ps1/.lua/.bash (default: next to filepick.exe)
+    --hooks <DIR>       Folder with filepick-hook.ps1/.lua/.bash (default: next to filepick.exe)
     --profile <FILE>    Use this PowerShell profile instead of the real ones (repeatable; for testing)
     --bashrc <FILE>     Use this file instead of ~/.bashrc
     --no-clink          Leave Clink alone
@@ -83,7 +83,7 @@ pub fn main(command: &str, args: impl Iterator<Item = OsString>) -> Result<ExitC
 
 fn setup(opts: &Options) -> Result<ExitCode, String> {
     let hooks = hooks_dir(opts)?;
-    let ps_hook = hooks.join("filepick.ps1");
+    let ps_hook = hooks.join("filepick-hook.ps1");
     if !ps_hook.is_file() {
         return Err(format!("can't find {} (use --hooks to say where the scripts are)", ps_hook.display()));
     }
@@ -303,7 +303,7 @@ fn doctor(opts: &Options) -> Result<ExitCode, String> {
     }
 
     let hooks = hooks_dir(opts).ok();
-    let ps_hook = hooks.as_ref().map(|h| h.join("filepick.ps1"));
+    let ps_hook = hooks.as_ref().map(|h| h.join("filepick-hook.ps1"));
     match &ps_hook {
         Some(h) if h.is_file() => ok(format!("hook scripts are in {}", h.parent().unwrap_or(h).display())),
         _ => bad("the hook scripts aren't next to filepick.exe".into(), "reinstall filepick".into()),
@@ -482,6 +482,10 @@ fn powershell(exe: &str, script: &str) -> Option<String> {
     let utf16: Vec<u8> = full.encode_utf16().flat_map(u16::to_le_bytes).collect();
     let mut cmd = Command::new(exe);
     cmd.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand", &base64(&utf16)]);
+    // Started from PowerShell 7, we inherit its module path; Windows
+    // PowerShell would then load PowerShell 7's modules and fail. Without
+    // the variable, each PowerShell builds its own default.
+    cmd.env_remove("PSModulePath");
     let out = output(cmd)?;
     out.status
         .success()
@@ -822,10 +826,10 @@ mod tests {
 
     #[test]
     fn profile_line_outside_localappdata_is_single_quoted() {
-        let line = ps_profile_line(Path::new(r"D:\it's\filepick.ps1"));
+        let line = ps_profile_line(Path::new(r"D:\it's\filepick-hook.ps1"));
         assert_eq!(
             line,
-            r"if (Test-Path -LiteralPath 'D:\it''s\filepick.ps1') { . 'D:\it''s\filepick.ps1' -Quiet }  # filepick-setup"
+            r"if (Test-Path -LiteralPath 'D:\it''s\filepick-hook.ps1') { . 'D:\it''s\filepick-hook.ps1' -Quiet }  # filepick-setup"
         );
     }
 

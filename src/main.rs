@@ -2,7 +2,7 @@
 //!
 //! Shows the files in a folder as a grid, lets you move with the arrow keys
 //! and filter by typing, and hands back the name you pick. A small shell hook
-//! (see `shell/filepick.ps1`) binds it to a hotkey and pastes the name at the
+//! (see `shell/filepick-hook.ps1`) binds it to a hotkey and pastes the name at the
 //! cursor.
 //!
 //! Exit codes: 0 = picked, 1 = cancelled, 2 = error.

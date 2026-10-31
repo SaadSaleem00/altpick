@@ -11,11 +11,11 @@
     PowerShell window.
 
 .EXAMPLE
-    . .\shell\filepick.ps1 -Exe .\target\release\filepick.exe
+    . .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe
     Turn the hotkey on in this window (note the leading dot and space).
 
 .EXAMPLE
-    . .\shell\filepick.ps1 -Exe .\target\release\filepick.exe -Chord 'Ctrl+Alt+p'
+    . .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe -Chord 'Ctrl+Alt+p'
     Use a different hotkey.
 #>
 [CmdletBinding()]

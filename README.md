@@ -32,7 +32,7 @@ Names with spaces or special characters are quoted for you.
 
 ```powershell
 cargo build --release
-. .\shell\filepick.ps1 -Exe .\target\release\filepick.exe
+. .\shell\filepick-hook.ps1 -Exe .\target\release\filepick.exe
 ```
 
 Then type `node ` and press **Alt+F**.

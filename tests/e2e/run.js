@@ -30,7 +30,7 @@ const pses = require('./pses');
 const ROOT = path.resolve(__dirname, '..', '..');
 const EXE = path.join(ROOT, 'target', 'release', 'filepick.exe');
 const SHELL_DIR = path.join(ROOT, 'shell');
-const PS_HOOK = process.env.FILEPICK_HOOK || path.join(SHELL_DIR, 'filepick.ps1');
+const PS_HOOK = process.env.FILEPICK_HOOK || path.join(SHELL_DIR, 'filepick-hook.ps1');
 const BASH_HOOK = path.join(SHELL_DIR, 'filepick.bash');
 const COLS = 140;
 const ROWS = 40;
@@ -43,6 +43,13 @@ const END = '\x1b[F';
 // Test files, including the awkward cases.
 const FILES = ['alpha.js', "it's.txt", 'my file.txt', 'اردو.txt'];
 const DIRS = ['sub dir'];
+
+/** A copy of env without PSModulePath (see the Shell constructor). */
+function withoutModulePath(env) {
+  const out = { ...env };
+  for (const k of Object.keys(out)) if (k.toLowerCase() === 'psmodulepath') delete out[k];
+  return out;
+}
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -136,7 +143,8 @@ class Shell {
       cols: COLS,
       rows: ROWS,
       cwd: os.tmpdir(),
-      env: { ...process.env, ...extraEnv },
+      // PSModulePath from a PowerShell 7 parent would make Windows PowerShell load 7's modules.
+      env: withoutModulePath({ ...process.env, ...extraEnv }),
       ...ptyOptions,
     });
     this.proc.onData((d) => this.term.write(d));
@@ -570,7 +578,7 @@ function makeInstall() {
   const dir = path.join(root, 'Programs', 'filepick');
   fs.mkdirSync(dir, { recursive: true });
   fs.copyFileSync(EXE, path.join(dir, 'filepick.exe'));
-  for (const f of ['filepick.ps1', 'filepick.lua', 'filepick.bash']) fs.copyFileSync(path.join(SHELL_DIR, f), path.join(dir, f));
+  for (const f of ['filepick-hook.ps1', 'filepick.lua', 'filepick.bash']) fs.copyFileSync(path.join(SHELL_DIR, f), path.join(dir, f));
   const profile = path.join(root, 'profile.ps1');
   const bashrc = path.join(root, '.bashrc');
   // The user's own line. It sets the test prompt, because Git's
