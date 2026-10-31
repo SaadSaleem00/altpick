@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "End-to-end tests: drives PowerShell in a hidden console and presses Alt+F",
   "scripts": {
-    "test": "node setup.js && node run.js"
+    "test": "node setup.js && node run.js",
+    "test:mintty": "node mintty.js"
   },
   "type": "commonjs",
   "devDependencies": {

@@ -40,11 +40,24 @@ __filepick_pick() {
     tmp=$(mktemp 2>/dev/null) || return 0
     exe=$(__filepick_exe)
 
+    # In mintty (Git Bash's own window) the terminal is a /dev/pty, not a
+    # Windows console. Windows programs then run behind a hidden console that
+    # keeps the palette's alternate-screen switch to itself and blanks
+    # mintty's real screen instead. So switch mintty to its alternate screen
+    # here: the blanking lands there, and mintty restores the real screen.
+    local own_screen=
+    case $(tty 2>/dev/null) in
+    /dev/pty*) own_screen=1 ;;
+    esac
+    [ -n "$own_screen" ] && printf '\e[?1049h' >/dev/tty
+
     # filepick.exe is a Windows program, so it gets a Windows path for --out.
     if "$exe" --out "$(cygpath -w "$tmp")" --quote sh 2>/dev/null; then
         pick=$(cat "$tmp" 2>/dev/null)
     fi
     rm -f "$tmp"
+
+    [ -n "$own_screen" ] && printf '\e[?1049l' >/dev/tty
 
     if [ -n "$pick" ]; then
         READLINE_LINE="${READLINE_LINE:0:READLINE_POINT}${pick}${READLINE_LINE:READLINE_POINT}"

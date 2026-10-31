@@ -30,14 +30,22 @@ pub fn run(dir: &Path, entries: Vec<Entry>) -> io::Result<Option<Entry>> {
     let dir_text = std::path::absolute(dir).unwrap_or_else(|_| dir.to_path_buf()).display().to_string();
     let mut session = Session::enter()?;
     let mut state = State::new(entries);
+    let mut test_keys = test_keys();
 
     loop {
         let (w, h) = terminal::size()?;
         state.fit(w as usize, h as usize);
         draw(&mut session.out, &state, &dir_text, w as usize, h as usize)?;
 
+        let event = match test_keys.next() {
+            Some(key) => {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                Event::Key(key)
+            }
+            None => event::read()?,
+        };
         // Resize and other events just fall through to a redraw.
-        if let Event::Key(key) = event::read()? {
+        if let Event::Key(key) = event {
             // Windows reports key releases too; only act on presses.
             if key.kind == KeyEventKind::Release {
                 continue;
@@ -49,6 +57,30 @@ pub fn run(dir: &Path, entries: Vec<Entry>) -> io::Result<Option<Entry>> {
             }
         }
     }
+}
+
+/// For tests in terminals that can't be sent keys (like mintty):
+/// FILEPICK_TEST_KEYS="text,enter" types "text" and then presses Enter.
+/// Words: enter, esc, end, home, down, right; anything else is typed.
+fn test_keys() -> std::vec::IntoIter<KeyEvent> {
+    let spec = std::env::var("FILEPICK_TEST_KEYS").unwrap_or_default();
+    let mut keys = Vec::new();
+    for word in spec.split(',').filter(|w| !w.is_empty()) {
+        let code = match word {
+            "enter" => KeyCode::Enter,
+            "esc" => KeyCode::Esc,
+            "end" => KeyCode::End,
+            "home" => KeyCode::Home,
+            "down" => KeyCode::Down,
+            "right" => KeyCode::Right,
+            text => {
+                keys.extend(text.chars().map(|c| KeyEvent::new(KeyCode::Char(c), KeyModifiers::NONE)));
+                continue;
+            }
+        };
+        keys.push(KeyEvent::new(code, KeyModifiers::NONE));
+    }
+    keys.into_iter()
 }
 
 #[derive(Debug, PartialEq, Eq)]

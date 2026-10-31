@@ -18,6 +18,14 @@
 -- one in Clink's .inputrc, e.g.
 --   "\e[12~": "luafunc:filepick_pick"     (F2)
 
+-- Two copies can be loaded at once (say, one registered by `filepick setup`
+-- and one from `clink inject --scripts`, which Clink loads first). The first
+-- one wins; later ones step aside.
+if FILEPICK_LOADED then
+    return
+end
+FILEPICK_LOADED = true
+
 local function script_dir()
     local source = debug.getinfo(1, "S").source
     return source:match("^@(.*)[\\/][^\\/]*$")
