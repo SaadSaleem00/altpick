@@ -1,1 +1,11 @@
 /target
+
+# Credentials and signing keys: never commit these
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+*.p12
+.npmrc
+.netrc
